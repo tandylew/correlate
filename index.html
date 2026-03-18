@@ -388,6 +388,53 @@
   .dot-trump { background: var(--red); }
   .dot-gtc { background: var(--purple); }
 
+  /* Metrics footer bar */
+  .metrics-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: #070c16;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: stretch;
+    height: 44px;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+  }
+
+  .metric-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 20px;
+    border-right: 1px solid var(--border);
+    flex: 1;
+    min-width: 0;
+  }
+
+  .metric-item:last-child { border-right: none; }
+
+  .metric-label {
+    color: var(--muted);
+    white-space: nowrap;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    flex-shrink: 0;
+  }
+
+  .metric-value {
+    color: var(--cyan);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  body { padding-bottom: 44px; }
+
   /* Responsive */
   @media (max-width: 700px) {
     .app-header, .nav-tabs, .section { padding-left: 16px; padding-right: 16px; }
@@ -741,6 +788,21 @@
   </div>
 
 </section>
+
+<div class="metrics-bar">
+  <div class="metric-item">
+    <span class="metric-label">SPY 20-day Range</span>
+    <span class="metric-value" id="mb-spy-range">—</span>
+  </div>
+  <div class="metric-item">
+    <span class="metric-label">USO 20-day Range</span>
+    <span class="metric-value" id="mb-uso-range">—</span>
+  </div>
+  <div class="metric-item">
+    <span class="metric-label">Peak Divergence Day</span>
+    <span class="metric-value" id="mb-peak-div">—</span>
+  </div>
+</div>
 
 <footer>
   Data: confirmed anchors from StockAnalysis, Yahoo Finance, Investing.com, CNBC, Reuters. Intermediate values reconstructed from OHLC anchors + news timestamps. Not financial advice.
@@ -1698,8 +1760,36 @@ window.addEventListener('resize', () => {
 //  INIT
 // ════════════════════════════════════════════════════════
 
+function buildMetricsBar() {
+  const n = MULTI_DATA.length;
+  const window20 = MULTI_DATA.slice(Math.max(0, n - 20));
+
+  const spyPrices = window20.map(d => d.spy);
+  const usoPrices = window20.map(d => d.uso);
+  const spyMin = Math.min(...spyPrices), spyMax = Math.max(...spyPrices);
+  const usoMin = Math.min(...usoPrices), usoMax = Math.max(...usoPrices);
+
+  // Peak divergence: date where |spyNorm - usoNorm| is greatest
+  let maxDiv = -Infinity, maxDivIdx = 0;
+  for (let i = 0; i < multiSpyNorm.length; i++) {
+    const div = Math.abs(multiSpyNorm[i] - multiUsoNorm[i]);
+    if (div > maxDiv) { maxDiv = div; maxDivIdx = i; }
+  }
+  const divDate = multiDates[maxDivIdx];
+  const divSpy  = multiSpyNorm[maxDivIdx].toFixed(1);
+  const divUso  = multiUsoNorm[maxDivIdx].toFixed(1);
+
+  document.getElementById('mb-spy-range').textContent =
+    `$${spyMin.toFixed(2)} – $${spyMax.toFixed(2)}`;
+  document.getElementById('mb-uso-range').textContent =
+    `$${usoMin.toFixed(2)} – $${usoMax.toFixed(2)}`;
+  document.getElementById('mb-peak-div').textContent =
+    `${divDate}  (SPY ${divSpy} vs USO ${divUso})`;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   buildChartNorm();
+  buildMetricsBar();
 });
 </script>
 </body>
