@@ -118,7 +118,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
 .pc-sparkline{margin-top:6px;line-height:0}
 #volume-wrap{background:var(--surf);border:1px solid var(--border);border-top:none;border-radius:0 0 4px 4px;padding:4px 8px;flex-shrink:0}
 #rsi-wrap{background:var(--surf);border:1px solid var(--border);border-top:none;border-radius:0 0 4px 4px;padding:4px 8px;flex-shrink:0}
-#volume-wrap canvas,#rsi-wrap canvas{width:100% !important;height:60px !important}
+#volume-wrap canvas,#rsi-wrap canvas,#macd-wrap canvas{width:100% !important;height:100% !important}
 .ind-controls{display:flex;gap:4px;flex-wrap:wrap}
 .ind-btn{background:none;border:1px solid var(--border);border-radius:3px;color:var(--text3);cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 7px;transition:all 0.15s}
 .ind-btn:hover{color:var(--text);border-color:var(--border2)}.ind-btn.active{color:var(--accent);border-color:var(--accent);background:rgba(34,211,238,0.08)}
@@ -131,6 +131,11 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
 .wl-chip:hover{border-color:var(--accent);color:var(--accent)}.wl-chip.active{border-color:var(--text3);color:var(--text3);cursor:default;opacity:0.5}
 .export-btn{background:none;border:1px solid var(--border);border-radius:3px;color:var(--text3);cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 8px;transition:all 0.15s}
 .export-btn:hover{border-color:var(--accent);color:var(--accent)}
+.sector-map{display:flex;gap:4px;flex-wrap:wrap;background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:8px}
+.sector-tile{flex:1;min-width:60px;max-width:100px;border-radius:3px;padding:6px 8px;text-align:center;cursor:pointer;transition:filter 0.15s}
+.sector-tile:hover{filter:brightness(1.2)}
+.sector-tile .st-sym{font-size:11px;font-weight:700;letter-spacing:0.06em}
+.sector-tile .st-chg{font-size:12px;font-weight:700;margin-top:2px}
 .portfolio-table{width:100%;border-collapse:collapse}
 .portfolio-table th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);padding:6px 8px;border-bottom:1px solid var(--border)}
 .portfolio-table td{padding:8px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums}
@@ -189,6 +194,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       <button class="wl-chip" data-sym="USO">USO</button>
       <button class="wl-chip" data-sym="VIX">VIX</button>
     </div>
+    <div id="sector-heatmap" class="sector-map"></div>
     <div id="chart-wrapper">
       <div id="chart-controls">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -209,6 +215,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
             <button class="ind-btn" data-ind="sma50">SMA 50</button>
             <button class="ind-btn active" data-ind="volume">Volume</button>
             <button class="ind-btn" data-ind="rsi">RSI</button>
+            <button class="ind-btn" data-ind="macd">MACD</button>
           </div>
           <button class="export-btn" id="export-btn" title="Export CSV">⬇ CSV</button>
         </div>
@@ -218,6 +225,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
     </div>
     <div id="volume-wrap" style="height:68px;position:relative"><canvas id="volume-chart"></canvas></div>
     <div id="rsi-wrap" style="height:68px;position:relative;display:none"><canvas id="rsi-chart"></canvas></div>
+    <div id="macd-wrap" style="height:80px;position:relative;display:none"><canvas id="macd-chart"></canvas></div>
   </section>
   <section id="tab-correlate" class="main-tab">
     <div id="corr-header">
@@ -308,7 +316,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       <h3>Data Source</h3>
       <div class="radio-group">
         <label><input type="radio" name="src" value="demo"> Demo — simulated data, no auth needed</label>
-        <label><input type="radio" name="src" value="yahoo"> Yahoo Finance — delayed quotes via CORS proxy</label>
+        <label><input type="radio" name="src" value="yahoo"> Yahoo Finance — delayed quotes (auto CORS proxy)</label>
         <label><input type="radio" name="src" value="robinhood"> Robinhood — real-time (bearer token required)</label>
       </div>
     </section>
@@ -320,7 +328,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
         <button class="btn" data-proxy="https://api.allorigins.win/raw?url=">allorigins</button>
         <button class="btn" data-proxy="">None</button>
       </div>
-      <small>Prepended to every API URL. Required for Yahoo Finance due to browser CORS policy.</small>
+      <small>Prepended to every API URL. Required for Yahoo Finance (browser CORS). Falls back to allorigins.win automatically if primary fails.</small>
     </section>
     <section class="settings-section" id="rbh-cfg" hidden>
       <h3>Robinhood Bearer Token</h3>
@@ -378,7 +386,7 @@ const SYMBOL_CFG={
 const YAHOO_RANGES={'1D':{interval:'5m',range:'1d'},'1W':{interval:'1h',range:'5d'},'1M':{interval:'1d',range:'1mo'},'3M':{interval:'1d',range:'3mo'},'YTD':{interval:'1d',range:'ytd'},'1Y':{interval:'1d',range:'1y'}};
 const RBH_RANGES={'1D':{interval:'5minute',span:'day'},'1W':{interval:'10minute',span:'week'},'1M':{interval:'day',span:'month'},'3M':{interval:'day',span:'3month'},'YTD':{interval:'day',span:'year'},'1Y':{interval:'day',span:'year'}};
 const CFG_VER=3;
-const CFG_DEF={_v:CFG_VER,source:'yahoo',corsProxy:'https://corsproxy.io/?',rbhToken:'',pollInterval:60,symbols:['SPY','USO','VIX'],tf:'1D',chartType:'line',indicators:{sma20:true,sma50:false,volume:true,rsi:false},alerts:[],portfolio:[]};
+const CFG_DEF={_v:CFG_VER,source:'yahoo',corsProxy:'https://corsproxy.io/?',rbhToken:'',pollInterval:60,symbols:['SPY','USO','VIX'],tf:'1D',chartType:'line',indicators:{sma20:true,sma50:false,volume:true,rsi:false,macd:false},alerts:[],portfolio:[]};
 let CFG;
 try{
   const _s=JSON.parse(localStorage.getItem('correlate-cfg')||'{}');
@@ -473,6 +481,13 @@ function calcRSI(closes,period=14){
   }
   return rsi;
 }
+function calcMACD(closes,fast=12,slow=26,signal=9){
+  const ema12=calcEMA(closes,fast),ema26=calcEMA(closes,slow);
+  const macd=closes.map((_,i)=>ema12[i]!=null&&ema26[i]!=null?ema12[i]-ema26[i]:null);
+  const macdFilled=macd.map(v=>v??0);const sig=calcEMA(macdFilled,signal);
+  const hist=macd.map((v,i)=>v!=null&&sig[i]!=null?v-sig[i]:null);
+  return{macd,signal:sig,histogram:hist};
+}
 function sparklineSVG(bars,color){
   if(!bars||bars.length<2) return '';
   const pts=bars.slice(-20);const prices=pts.map(b=>b.close);
@@ -522,6 +537,30 @@ async function rbhFetch(sym,params){
   const res=await fetchWithProxy(url,{headers:rbhHeaders()});if(!res.ok) throw new Error(`Robinhood ${res.status}`);
   return parseRbhHist(await res.json());
 }
+async function fetchSectorQuote(sym){
+  // Fetch just the 1-day quote for sector heatmap (no bars stored)
+  try{
+    const url=`https://query1.finance.yahoo.com/v8/finance/chart/${yahooSym(sym)}?interval=1d&range=1d`;
+    const res=await fetchWithProxy(url);if(!res.ok) return;
+    const d=await res.json();
+    const r=d?.chart?.result?.[0];if(!r) return;
+    const m=r.meta||{};
+    const price=m.regularMarketPrice||0;const pc=m.chartPreviousClose||m.previousClose||price;
+    S.data[sym]={bars:[],quote:{price,prevClose:pc,change:price-pc,changePct:pc?(price/pc-1)*100:0,high:m.regularMarketDayHigh||price,low:m.regularMarketDayLow||price,volume:m.regularMarketVolume||0}};
+  }catch(e){}
+}
+async function fetchSectorData(){
+  if(CFG.source==='demo') return;
+  // Fetch sector ETFs not in watchlist (don't interfere with main chart data)
+  const toFetch=SECTOR_SYMS.filter(s=>!CFG.symbols.includes(s));
+  // Batch in groups of 3 to avoid hammering proxies
+  for(let i=0;i<toFetch.length;i+=3){
+    const batch=toFetch.slice(i,i+3);
+    await Promise.allSettled(batch.map(s=>fetchSectorQuote(s)));
+    await new Promise(r=>setTimeout(r,300)); // small delay between batches
+  }
+  renderSectorHeatmap();
+}
 async function fetchAllSymbols(tf){
   if(CFG.source==='demo'){tickDemoData();return;}
   setStatus('fetching');
@@ -539,6 +578,7 @@ async function fetchAllSymbols(tf){
   if(errs.length){const el=document.getElementById('backfill-status');if(el) el.textContent='Error: '+errs[0].reason?.message;}
   checkAlerts();
   updateUI();
+  if(S.activeTab==='market') setTimeout(fetchSectorData,500);
 }
 function parseTs(s){const n=+s;if(!isNaN(n)&&n>1e9) return n;const d=new Date(s);if(!isNaN(d)) return Math.floor(d/1000);throw new Error('Cannot parse: '+s);}
 function parseCSV(text){
@@ -631,7 +671,29 @@ function getFilteredBars(sym,tf){
 }
 Chart.defaults.color='#64748b';Chart.defaults.borderColor='#1a2535';Chart.defaults.font.family="'JetBrains Mono', monospace";Chart.defaults.font.size=11;Chart.defaults.animation=false;
 const GRID={color:'#0d1726',drawBorder:false};
-function dc(id){if(S.charts[id]){S.charts[id].destroy();delete S.charts[id];}}
+function dc(id){
+  if(S.charts[id]){
+    if(typeof S.charts[id].destroy==='function') S.charts[id].destroy();
+    delete S.charts[id];
+  }
+  // Also clear canvas context if switching to/from OHLC
+  if(id==='main'){const c=document.getElementById('main-chart');if(c&&c.getContext){const ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);}}
+}
+function buildMACDChart(){
+  dc('macd');const wrap=document.getElementById('macd-wrap');const canvas=document.getElementById('macd-chart');
+  if(!canvas) return;
+  wrap&&(wrap.style.display=CFG.indicators.macd?'block':'none');
+  if(!CFG.indicators.macd) return;
+  const sym=CFG.symbols[0];const bars=getFilteredBars(sym,CFG.tf);if(bars.length<30) return;
+  const closes=bars.map(b=>b.close);const {macd,signal,histogram}=calcMACD(closes);
+  const labels=bars.map(b=>{const d=new Date(b.ts*1000);return CFG.tf==='1D'?d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false}):d.toLocaleDateString('en-US',{month:'numeric',day:'numeric'});});
+  const histColors=histogram.map(v=>v==null?null:v>=0?'rgba(74,222,128,0.6)':'rgba(248,113,113,0.6)');
+  S.charts['macd']=new Chart(canvas,{data:{labels,datasets:[
+    {type:'bar',label:'Histogram',data:histogram.map(v=>v==null?null:+v.toFixed(4)),backgroundColor:histColors,borderWidth:0,order:2},
+    {type:'line',label:'MACD',data:macd.map(v=>v==null?null:+v.toFixed(4)),borderColor:'#22d3ee',borderWidth:1.5,pointRadius:0,tension:0.1,fill:false,spanGaps:false,order:1},
+    {type:'line',label:'Signal',data:signal.map(v=>v==null?null:+v.toFixed(4)),borderColor:'#fbbf24',borderWidth:1.2,borderDash:[3,2],pointRadius:0,tension:0.1,fill:false,spanGaps:false,order:1}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#0d1520',borderColor:'#1a2535',borderWidth:1,filter:item=>item.dataset.label!=='Histogram',callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(3)}`}}},scales:{x:{display:false,grid:{display:false}},y:{grid:{color:'#0d1726',drawBorder:false},ticks:{color:'#64748b',maxTicksLimit:3}}}}});
+}
 function buildOHLCChart(bars){
   const canvas=document.getElementById('main-chart');if(!canvas) return;
   if(S.charts['main']){S.charts['main'].destroy();delete S.charts['main'];}
@@ -668,7 +730,7 @@ function buildOHLCChart(bars){
   });
 }
 function buildMainChart(){
-  if(CFG.chartType==='ohlc'){const bars=getFilteredBars(CFG.symbols[0],CFG.tf);buildOHLCChart(bars);buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();return;}
+  if(CFG.chartType==='ohlc'){const bars=getFilteredBars(CFG.symbols[0],CFG.tf);buildOHLCChart(bars);buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();if(CFG.indicators.macd) buildMACDChart();return;}
   dc('main');const canvas=document.getElementById('main-chart');if(!canvas) return;
   const tf=CFG.tf;const syms=CFG.symbols.filter(s=>S.data[s]?.bars?.length>=2);if(!syms.length) return;
   const firstBars=getFilteredBars(syms[0],tf);
@@ -686,7 +748,7 @@ function buildMainChart(){
   const legendEl=document.getElementById('chart-legend');
   if(legendEl) legendEl.innerHTML=syms.map(sym=>{const c=SYMBOL_CFG[sym]?.color||'#94a3b8';return`<span class="legend-item"><span class="legend-dot" style="background:${c}"></span>${sym}</span>`;}).join('')+(CFG.indicators.sma20?'<span class="legend-item"><span class="legend-dot" style="background:#fbbf24;opacity:0.7"></span>SMA20</span>':'')+(CFG.indicators.sma50?'<span class="legend-item"><span class="legend-dot" style="background:#f87171;opacity:0.7"></span>SMA50</span>':'');
   S.charts['main']=new Chart(canvas,{type:'line',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{backgroundColor:'#0d1520',borderColor:'#1a2535',borderWidth:1,callbacks:{label:ctx=>{if(ctx.dataset.label?.startsWith('SMA')) return ` ${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2)}`;const bars=getFilteredBars(ctx.dataset.label,tf);const price=bars[ctx.dataIndex]?.close;return` ${ctx.dataset.label}: ${price!=null?'$'+(price>=100?price.toFixed(2):price.toFixed(3)):ctx.parsed.y.toFixed(2)}`;},title:ctx=>ctx[0].label}}},scales:{x:{grid:GRID,ticks:{color:'#64748b',maxTicksLimit:10}},y:{grid:GRID,ticks:{color:'#64748b',callback:v=>v.toFixed(1)},title:{display:true,text:'Indexed (base=100)',color:'#64748b'}}}}});
-  buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();
+  buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();if(CFG.indicators.macd) buildMACDChart();
 }
 function buildVolumeChart(){
   dc('volume');const wrap=document.getElementById('volume-wrap');const canvas=document.getElementById('volume-chart');
@@ -783,11 +845,22 @@ function setStatus(status){
 }
 function updateClock(){
   const el=document.getElementById('market-clock');if(!el) return;
-  const et=new Date(new Date().toLocaleString('en-US',{timeZone:'America/New_York'}));
-  const h=et.getHours(),m=et.getMinutes();
-  const isOpen=(h>9||(h===9&&m>=30))&&h<16;const isPre=h>=4&&!isOpen&&h<16;const isAfter=h>=16&&h<20;
-  el.textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')} ET ${isOpen?'● Open':isPre?'◐ Pre':isAfter?'◐ Post':'○ Closed'}`;
+  const now=new Date();
+  const et=new Date(now.toLocaleString('en-US',{timeZone:'America/New_York'}));
+  const h=et.getHours(),m=et.getMinutes(),s=et.getSeconds();
+  const totalMin=h*60+m;
+  const isOpen=(totalMin>=570)&&(totalMin<960); // 9:30–16:00
+  const isPre=totalMin>=240&&!isOpen&&totalMin<570;
+  const isAfter=totalMin>=960&&totalMin<1200;
+  const timeStr=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')} ET`;
+  let marker='';
+  if(isOpen){const minsLeft=960-totalMin;marker=`● ${minsLeft}m`;}
+  else if(isPre){const minsTo=570-totalMin;marker=`◐ ${minsTo}m`;}
+  else if(isAfter){marker='◐ AH';}
+  else{marker='○';}
+  el.textContent=`${timeStr} ${marker}`;
   el.className='market-clock '+(isOpen?'open':isPre||isAfter?'extended':'');
+  el.title=isOpen?'Market Open':isPre?'Pre-Market':isAfter?'After Hours':'Market Closed';
 }
 function renderSymbolChips(){
   const el=document.getElementById('symbol-chips');if(!el) return;
@@ -801,7 +874,7 @@ function updateCorrSelectors(){
     el.innerHTML=blank+CFG.symbols.map(s=>`<option value="${s}"${s===cur?' selected':''}>${s}</option>`).join('');
   });
 }
-function updateUI(){updateTicker();updatePriceCards();if(S.activeTab==='market') buildMainChart();if(S.activeTab==='correlate') updateCorrStats();if(S.activeTab==='portfolio') renderPortfolio();updateCorrSelectors();updateWatchlistChips();}
+function updateUI(){updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();renderSectorHeatmap();}if(S.activeTab==='correlate') updateCorrStats();if(S.activeTab==='portfolio') renderPortfolio();updateCorrSelectors();updateWatchlistChips();}
 function startPolling(){stopPolling();if(CFG.pollInterval<=0||CFG.source==='demo') return;S.pollTimer=setInterval(()=>fetchAllSymbols(),CFG.pollInterval*1000);}
 function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
 function startDemoTick(){stopDemoTick();S.demoTicker=setInterval(tickDemoData,10000);}
@@ -864,6 +937,26 @@ function saveSettings(){
   if(newSym&&!CFG.symbols.includes(newSym)){CFG.symbols.push(newSym);if(!SYMBOL_CFG[newSym]){const c=['#a78bfa','#4ade80','#f97316','#e879f9'];SYMBOL_CFG[newSym]={name:newSym,color:c[CFG.symbols.length%c.length],vol:0.001,seed:newSym.charCodeAt(0)};}}
   saveCfg();closeSettings();stopPolling();stopDemoTick();renderSymbolChips();updateCorrSelectors();
   if(CFG.source==='demo'){initDemoData();updateUI();startDemoTick();}else{initDemoData();updateUI();fetchAllSymbols(CFG.tf).then(()=>startPolling());}
+}
+const SECTOR_SYMS=['SPY','QQQ','DIA','IWM','XLK','XLF','XLE','XLV','XLC','XLI','XLY','XLP','XLU','XLRE','GLD','SLV','USO','TLT','HYG'];
+function renderSectorHeatmap(){
+  const el=document.getElementById('sector-heatmap');if(!el) return;
+  const tiles=SECTOR_SYMS.map(sym=>{
+    const q=S.data[sym]?.quote;const pct=q?.changePct??null;
+    const color=pct==null?'var(--surf2)':pct>2?'#16a34a':pct>1?'#15803d':pct>0.5?'#166534':pct>0?'#14532d':pct>-0.5?'#7f1d1d':pct>-1?'#991b1b':pct>-2?'#b91c1c':'#dc2626';
+    const fg=pct==null?'var(--text3)':'rgba(255,255,255,0.9)';
+    const label=pct!=null?(pct>=0?'+':'')+pct.toFixed(2)+'%':'—';
+    return`<div class="sector-tile" style="background:${color};color:${fg}" title="${sym}" onclick="addWatchSym('${sym}')"><div class="st-sym">${sym}</div><div class="st-chg">${label}</div></div>`;
+  }).join('');
+  el.innerHTML=tiles;
+}
+function addWatchSym(sym){
+  if(CFG.symbols.includes(sym)){showToast(`${sym} already in watchlist`);return;}
+  CFG.symbols.push(sym);
+  if(!SYMBOL_CFG[sym]){const c=['#a78bfa','#4ade80','#f97316','#e879f9','#38bdf8'];SYMBOL_CFG[sym]={name:sym,color:c[CFG.symbols.length%c.length],vol:0.001,seed:sym.charCodeAt(0)};}
+  saveCfg();renderSymbolChips();updateCorrSelectors();updateWatchlistChips();
+  if(CFG.source!=='demo') fetchAllSymbols(CFG.tf);else updateUI();
+  showToast(`Added ${sym}`,'success');
 }
 function exportCSV(){
   const sym=CFG.symbols[0];const bars=S.data[sym]?.bars||[];if(!bars.length){showToast('No data to export','error');return;}
@@ -1030,7 +1123,7 @@ function init(){
   });
   updateClock();setInterval(updateClock,15000);
   if(CFG.source==='demo'){initDemoData();updateUI();startDemoTick();}
-  else{initDemoData();updateUI();fetchAllSymbols(CFG.tf).then(()=>startPolling());}
+  else{initDemoData();updateUI();fetchAllSymbols(CFG.tf).then(()=>{startPolling();setTimeout(fetchSectorData,1000);});}
 }
 document.addEventListener('DOMContentLoaded',init);
 </script>
