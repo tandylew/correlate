@@ -276,8 +276,13 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
     </div>
     <div id="fear-greed-bar" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:8px 12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap"></div>
     <div id="stats-row" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    <div id="rs-ranking-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:8px 12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Relative Strength vs SPY</div>
+      <div id="rs-ranking" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    </div>
     <div id="signals-bar" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     <div id="sector-heatmap" class="sector-map"></div>
+    <div id="opex-bar" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:7px 12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:11px"></div>
     <div id="news-links-bar"></div>
     <div id="news-headlines-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:8px 12px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
@@ -1451,7 +1456,7 @@ function updateRegimeBar(){
   }
   bar.innerHTML=items.length?items.join('<span style="color:var(--border2);margin:0 2px">|</span>'):'<span style="color:var(--text3);font-size:10px">Loading market data…</span>';
 }
-function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate') updateCorrStats();if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();}updateCorrSelectors();updateWatchlistChips();}
+function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();renderOpexBar();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate') updateCorrStats();if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();}updateCorrSelectors();updateWatchlistChips();}
 function startPolling(){stopPolling();if(CFG.pollInterval<=0||CFG.source==='demo') return;S.pollTimer=setInterval(()=>fetchAllSymbols(),CFG.pollInterval*1000);}
 function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
 function startDemoTick(){stopDemoTick();S.demoTicker=setInterval(tickDemoData,10000);}
@@ -2266,6 +2271,65 @@ function init(){
   updateClock();setInterval(updateClock,15000);
   if(CFG.source==='demo'){initDemoData();updateUI();startDemoTick();}
   else{initDemoData();updateUI();fetchAllSymbols(CFG.tf).then(()=>{startPolling();setTimeout(fetchSectorData,1000);setTimeout(renderNewsHeadlines,2000);});}
+}
+// === OPTIONS EXPIRATION CALENDAR ===
+function getNextOpexDates(n=6){
+  // Monthly opex = 3rd Friday of each month
+  // Weekly opex = every Friday
+  const dates=[];const now=new Date();
+  for(let m=0;m<n+2;m++){
+    const d=new Date(now.getFullYear(),now.getMonth()+m,1);
+    // Find 3rd Friday
+    const firstFri=new Date(d);while(firstFri.getDay()!==5) firstFri.setDate(firstFri.getDate()+1);
+    const thirdFri=new Date(firstFri);thirdFri.setDate(firstFri.getDate()+14);
+    if(thirdFri>now) dates.push({date:thirdFri,type:'Monthly OPEX',label:thirdFri.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})});
+    if(dates.length>=n) break;
+  }
+  return dates.slice(0,n);
+}
+function renderOpexBar(){
+  const el=document.getElementById('opex-bar');if(!el) return;
+  const opexDates=getNextOpexDates(4);
+  const now=new Date();
+  const items=opexDates.map(({date,type,label})=>{
+    const daysAway=Math.ceil((date-now)/86400000);
+    const urgency=daysAway<=3?'neg':daysAway<=7?'warn':'text3';
+    return`<div style="display:flex;align-items:center;gap:6px"><span style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em">${type}</span><span style="font-weight:700">${label}</span><span style="font-size:9px;color:var(--${urgency})">${daysAway}d</span></div>`;
+  }).join('<span style="color:var(--border2)">|</span>');
+  el.innerHTML=`<span style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em">Opex</span>${items}`;
+}
+// === RELATIVE STRENGTH RANKING ===
+function renderRSRanking(){
+  const el=document.getElementById('rs-ranking');if(!el) return;
+  const spyBars=S.data['SPY']?.bars;
+  if(!spyBars||spyBars.length<5){el.innerHTML='<span style="color:var(--text3);font-size:10px">Need SPY data for RS calculation.</span>';return;}
+  const spyClose=spyBars[spyBars.length-1]?.close;const spyOpen=spyBars[0]?.close||spyClose;
+  const spyRet=spyOpen>0?(spyClose/spyOpen-1)*100:0;
+  const RS_PERIODS=[{label:'1D',days:1},{label:'1W',days:5},{label:'1M',days:21}];
+  const scores=CFG.symbols.filter(s=>s!=='VIX').map(sym=>{
+    const bars=S.data[sym]?.bars;const cfg=SYMBOL_CFG[sym]||{color:'#94a3b8'};
+    if(!bars||bars.length<5) return{sym,cfg,rs:null,rsPct:null,label:'—',cls:''};
+    const last=bars[bars.length-1]?.close;const first=bars[0]?.close||last;
+    const symRet=first>0?(last/first-1)*100:0;
+    const rs=symRet-spyRet; // excess return vs SPY
+    const cls=rs>1?'pos':rs<-1?'neg':'';
+    const label=(rs>=0?'+':'')+rs.toFixed(2)+'%';
+    return{sym,cfg,rs,rsPct:symRet,label,cls};
+  }).sort((a,b)=>(b.rs??-999)-(a.rs??-999));
+  el.innerHTML=scores.map(({sym,cfg,rs,rsPct,label,cls})=>{
+    if(rs==null) return'';
+    const barW=Math.min(100,Math.abs(rs)*5);const barColor=rs>=0?'var(--pos)':'var(--neg)';
+    return`<div style="background:var(--surf2);border:1px solid var(--border);border-radius:4px;padding:6px 10px;min-width:120px;display:flex;flex-direction:column;gap:3px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-weight:700;font-size:11px;color:${cfg.color}">${sym}</span>
+        <span class="${cls}" style="font-size:11px;font-weight:700">${label}</span>
+      </div>
+      <div style="height:3px;background:var(--border);border-radius:2px">
+        <div style="width:${barW}%;height:100%;background:${barColor};border-radius:2px;${rs<0?'margin-left:auto':''}"></div>
+      </div>
+      <div style="font-size:9px;color:var(--text3)">vs SPY ${spyRet>=0?'+':''}${spyRet.toFixed(2)}%</div>
+    </div>`;
+  }).join('');
 }
 // === BOLLINGER SQUEEZE DETECTOR ===
 function renderSqueezePanel(){
