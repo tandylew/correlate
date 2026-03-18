@@ -133,6 +133,12 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
 .wl-chip:hover{border-color:var(--accent);color:var(--accent)}.wl-chip.active{border-color:var(--text3);color:var(--text3);cursor:default;opacity:0.5}
 .export-btn{background:none;border:1px solid var(--border);border-radius:3px;color:var(--text3);cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 8px;transition:all 0.15s}
 .export-btn:hover{border-color:var(--accent);color:var(--accent)}
+.stats-card{background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:8px 12px;display:flex;flex-direction:column;gap:3px;flex:1;min-width:130px}
+.stats-card .sc-sym{font-size:10px;font-weight:700;letter-spacing:0.08em;margin-bottom:2px}
+.stats-card .sc-row{display:flex;justify-content:space-between;align-items:center;font-size:10px}
+.stats-card .sc-lbl{color:var(--text3)}.stats-card .sc-val{font-weight:600;font-variant-numeric:tabular-nums}
+.corr-matrix-grid{display:grid;gap:2px}.corr-cell{border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:default;transition:filter 0.15s}.corr-cell:hover{filter:brightness(1.3)}
+.corr-matrix-label{font-size:10px;color:var(--text3);display:flex;align-items:center;justify-content:center;font-weight:600}
 .sector-map{display:flex;gap:4px;flex-wrap:wrap;background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:8px}
 .sector-tile{flex:1;min-width:60px;max-width:100px;border-radius:3px;padding:6px 8px;text-align:center;cursor:pointer;transition:filter 0.15s}
 .sector-tile:hover{filter:brightness(1.2)}
@@ -196,6 +202,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       <button class="wl-chip" data-sym="USO">USO</button>
       <button class="wl-chip" data-sym="VIX">VIX</button>
     </div>
+    <div id="stats-row" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     <div id="sector-heatmap" class="sector-map"></div>
     <div id="chart-wrapper">
       <div id="chart-controls">
@@ -242,11 +249,22 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
         <div class="corr-r-lbl">Pearson r</div>
       </div>
       <div class="corr-sym-block"><label>Symbol B</label><select id="corr-b"></select></div>
+      <div class="corr-sym-block">
+        <label>Window</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="range" id="corr-window" min="5" max="60" value="20" style="width:80px;accent-color:var(--accent)">
+          <span id="corr-window-val" style="font-size:12px;color:var(--text2);min-width:24px">20</span>
+        </div>
+      </div>
     </div>
     <div id="corr-stats-row"></div>
     <div id="corr-charts-row">
       <div class="corr-chart-wrap"><div class="chart-label">Return Scatter</div><canvas id="scatter-chart"></canvas></div>
       <div class="corr-chart-wrap"><div class="chart-label" id="rolling-label">Rolling Correlation</div><canvas id="rolling-corr-chart"></canvas></div>
+    </div>
+    <div id="corr-matrix-wrap" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Correlation Matrix</div>
+      <div id="corr-matrix"></div>
     </div>
   </section>
   <section id="tab-portfolio" class="main-tab">
@@ -807,15 +825,48 @@ function buildScatterChart(){
   for(let i=1;i<bA.length;i++){const p0=bA[i-1].close,p1=bA[i].close;const b0=mapB.get(bA[i-1].ts),b1=mapB.get(bA[i].ts);if(!b0||!b1) continue;points.push({x:+((p1/p0-1)*100).toFixed(4),y:+((b1/b0-1)*100).toFixed(4)});}
   S.charts['scatter']=new Chart(canvas,{type:'scatter',data:{datasets:[{label:`${S.corrA} vs ${S.corrB}`,data:points,backgroundColor:'rgba(34,211,238,0.45)',borderColor:'rgba(34,211,238,0.8)',pointRadius:4,pointHoverRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#0d1520',borderColor:'#1a2535',borderWidth:1,callbacks:{label:ctx=>` ${S.corrA} ${ctx.parsed.x.toFixed(3)}%  ${S.corrB} ${ctx.parsed.y.toFixed(3)}%`}}},scales:{x:{grid:GRID,ticks:{color:'#64748b'},title:{display:true,text:`${S.corrA} Return %`,color:'#64748b'}},y:{grid:GRID,ticks:{color:'#64748b'},title:{display:true,text:`${S.corrB} Return %`,color:'#64748b'}}}}});
 }
+let CORR_WIN=CORR_WINDOW;
 function buildRollingCorrChart(){
   dc('rolling');const canvas=document.getElementById('rolling-corr-chart');if(!canvas) return;
-  const bA=getFilteredBars(S.corrA,CFG.tf);const bB=getFilteredBars(S.corrB,CFG.tf);if(bA.length<CORR_WINDOW+2||bB.length<CORR_WINDOW+2) return;
+  const bA=getFilteredBars(S.corrA,CFG.tf);const bB=getFilteredBars(S.corrB,CFG.tf);if(bA.length<CORR_WIN+2||bB.length<CORR_WIN+2) return;
   const mapB=new Map(bB.map(b=>[b.ts,b.close]));const aligned=bA.filter(b=>mapB.has(b.ts));
   const pA=aligned.map(b=>b.close);const pB=aligned.map(b=>mapB.get(b.ts));
-  const rA=pctReturns(pA).slice(1);const rB=pctReturns(pB).slice(1);const roll=rollingPearson(rA,rB,CORR_WINDOW);
+  const rA=pctReturns(pA).slice(1);const rB=pctReturns(pB).slice(1);const roll=rollingPearson(rA,rB,CORR_WIN);
   const labels=aligned.slice(1).map(b=>{const d=new Date(b.ts*1000);return CFG.tf==='1D'?d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false}):d.toLocaleDateString('en-US',{month:'numeric',day:'numeric'});});
-  const el=document.getElementById('rolling-label');if(el) el.textContent=`Rolling ${CORR_WINDOW}-Bar Correlation`;
+  const el=document.getElementById('rolling-label');if(el) el.textContent=`Rolling ${CORR_WIN}-Bar Correlation`;
   S.charts['rolling']=new Chart(canvas,{type:'line',data:{labels,datasets:[{label:'Rolling r',data:roll.map(v=>isNaN(v)?null:+v.toFixed(4)),borderColor:'#22d3ee',backgroundColor:'rgba(34,211,238,0.07)',borderWidth:2,pointRadius:0,pointHoverRadius:4,spanGaps:false,fill:false,segment:{borderColor:ctx=>ctx.p1.parsed.y>=0?'#4ade80':'#f87171'}}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{backgroundColor:'#0d1520',borderColor:'#1a2535',borderWidth:1,callbacks:{label:ctx=>` r = ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(3):'N/A'}`}}},scales:{x:{grid:GRID,ticks:{color:'#64748b',maxTicksLimit:10}},y:{grid:GRID,min:-1,max:1,ticks:{color:'#64748b'},title:{display:true,text:'Pearson r',color:'#64748b'}}}}});
+}
+function buildCorrelationMatrix(){
+  const el=document.getElementById('corr-matrix');if(!el) return;
+  const syms=CFG.symbols.filter(s=>S.data[s]?.bars?.length>=4);if(syms.length<2){el.innerHTML='<span style="color:var(--text3);font-size:11px">Need ≥2 symbols with data</span>';return;}
+  const n=syms.length;const cellSz=Math.min(56,Math.floor(320/n));
+  const matrix=syms.map(sA=>syms.map(sB=>{
+    if(sA===sB) return 1;
+    const bA=getFilteredBars(sA,CFG.tf);const bB=getFilteredBars(sB,CFG.tf);
+    const mapB=new Map(bB.map(b=>[b.ts,b.close]));const al=bA.filter(b=>mapB.has(b.ts));
+    if(al.length<4) return null;
+    const rA=pctReturns(al.map(b=>b.close)).slice(1).filter(v=>!isNaN(v));
+    const rB=pctReturns(al.map(b=>mapB.get(b.ts))).slice(1).filter(v=>!isNaN(v));
+    return pearson(rA,rB);
+  }));
+  const corrToColor=r=>{
+    if(r==null) return'var(--surf2)';
+    const g=r>0?Math.round(r*120):0;const re=r<0?Math.round(-r*120):0;
+    return`rgba(${re},${g},80,0.6)`;
+  };
+  const header='<div class="corr-matrix-grid" style="grid-template-columns:auto '+syms.map(()=>`${cellSz}px`).join(' ')+'">'+
+    '<div></div>'+syms.map(s=>`<div class="corr-matrix-label" style="height:${cellSz}px;color:${SYMBOL_CFG[s]?.color||'#94a3b8'}">${s}</div>`).join('')+
+    syms.map((sA,i)=>{
+      const rowLabel=`<div class="corr-matrix-label" style="width:40px;color:${SYMBOL_CFG[sA]?.color||'#94a3b8'};justify-content:flex-end;padding-right:6px">${sA}</div>`;
+      const cells=matrix[i].map((r,j)=>{
+        const bg=corrToColor(r);const txt=r==null?'—':r===1?'1':r.toFixed(2);
+        const fg=r!=null&&Math.abs(r)>0.5?'rgba(255,255,255,0.9)':'rgba(255,255,255,0.7)';
+        return`<div class="corr-cell" style="width:${cellSz}px;height:${cellSz}px;background:${bg};color:${fg}" title="${sA} vs ${syms[j]}: ${txt}">${txt}</div>`;
+      }).join('');
+      return rowLabel+cells;
+    }).join('')+
+  '</div>';
+  el.innerHTML=header;
 }
 const fmtP=p=>p>=100?p.toFixed(2):p.toFixed(3);
 const fmtChg=(v,pct)=>(v>=0?'+':'')+(pct?v.toFixed(2)+'%':fmtP(Math.abs(v)));
@@ -863,7 +914,7 @@ function updateCorrStats(){
     const div=qA?.changePct!=null&&qB?.changePct!=null?((qA.changePct-qB.changePct>=0?'+':'')+(qA.changePct-qB.changePct).toFixed(2)+'%'):'—';
     statsEl.innerHTML=[{v:r.toFixed(3),l:'Pearson r'},{v:(r*r).toFixed(3),l:'R²'},{v:isNaN(beta)?'—':beta.toFixed(3),l:`β (${corrA}/${corrB})`},{v:n,l:`Bars (${CORR_WINDOW}-bar)`},{v:div,l:'Divergence'}].map(({v,l})=>`<div class="corr-stat"><div class="cs-val">${v}</div><div class="cs-lbl">${l}</div></div>`).join('');
   }
-  buildScatterChart();buildRollingCorrChart();
+  buildScatterChart();buildRollingCorrChart();buildCorrelationMatrix();
 }
 function setStatus(status){
   S.status=status;const dot=document.getElementById('live-dot');const text=document.getElementById('status-text');if(!dot||!text) return;
@@ -902,7 +953,7 @@ function updateCorrSelectors(){
     el.innerHTML=blank+CFG.symbols.map(s=>`<option value="${s}"${s===cur?' selected':''}>${s}</option>`).join('');
   });
 }
-function updateUI(){updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();renderSectorHeatmap();}if(S.activeTab==='correlate') updateCorrStats();if(S.activeTab==='portfolio') renderPortfolio();updateCorrSelectors();updateWatchlistChips();}
+function updateUI(){updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSectorHeatmap();}if(S.activeTab==='correlate') updateCorrStats();if(S.activeTab==='portfolio') renderPortfolio();updateCorrSelectors();updateWatchlistChips();}
 function startPolling(){stopPolling();if(CFG.pollInterval<=0||CFG.source==='demo') return;S.pollTimer=setInterval(()=>fetchAllSymbols(),CFG.pollInterval*1000);}
 function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
 function startDemoTick(){stopDemoTick();S.demoTicker=setInterval(tickDemoData,10000);}
@@ -965,6 +1016,34 @@ function saveSettings(){
   if(newSym&&!CFG.symbols.includes(newSym)){CFG.symbols.push(newSym);if(!SYMBOL_CFG[newSym]){const c=['#a78bfa','#4ade80','#f97316','#e879f9'];SYMBOL_CFG[newSym]={name:newSym,color:c[CFG.symbols.length%c.length],vol:0.001,seed:newSym.charCodeAt(0)};}}
   saveCfg();closeSettings();stopPolling();stopDemoTick();renderSymbolChips();updateCorrSelectors();
   if(CFG.source==='demo'){initDemoData();updateUI();startDemoTick();}else{initDemoData();updateUI();fetchAllSymbols(CFG.tf).then(()=>startPolling());}
+}
+function calcSymStats(sym){
+  const bars=getFilteredBars(sym,CFG.tf);if(bars.length<3) return null;
+  const closes=bars.map(b=>b.close);const n=closes.length;
+  const returns=pctReturns(closes).slice(1).filter(v=>!isNaN(v));
+  const meanR=returns.reduce((a,b)=>a+b,0)/returns.length;
+  const stdR=Math.sqrt(returns.reduce((s,v)=>s+(v-meanR)**2,0)/returns.length)||1;
+  const annFactor=CFG.tf==='1D'?Math.sqrt(252*78):CFG.tf==='1W'?Math.sqrt(252):Math.sqrt(252); // rough
+  const sharpe=(meanR/stdR)*annFactor;
+  // Max drawdown
+  let peak=closes[0],maxDD=0;
+  for(const c of closes){if(c>peak) peak=c;const dd=(peak-c)/peak;if(dd>maxDD) maxDD=dd;}
+  // Annualized vol
+  const vol=stdR*(CFG.tf==='1D'?Math.sqrt(252*78):Math.sqrt(252));
+  return{vol:vol.toFixed(2),sharpe:sharpe.toFixed(2),maxDD:(maxDD*100).toFixed(2),bars:n};
+}
+function updateStatsRow(){
+  const el=document.getElementById('stats-row');if(!el) return;
+  el.innerHTML=CFG.symbols.map(sym=>{
+    const cfg=SYMBOL_CFG[sym]||{color:'#94a3b8'};const st=calcSymStats(sym);if(!st) return'';
+    const sC=parseFloat(st.sharpe)>=1?'pos':parseFloat(st.sharpe)<0?'neg':'';
+    return`<div class="stats-card"><div class="sc-sym" style="color:${cfg.color}">${sym}</div>
+      <div class="sc-row"><span class="sc-lbl">Annl Vol</span><span class="sc-val">${st.vol}%</span></div>
+      <div class="sc-row"><span class="sc-lbl">Sharpe</span><span class="sc-val ${sC}">${st.sharpe}</span></div>
+      <div class="sc-row"><span class="sc-lbl">Max DD</span><span class="sc-val neg">-${st.maxDD}%</span></div>
+      <div class="sc-row"><span class="sc-lbl">Bars</span><span class="sc-val">${st.bars}</span></div>
+    </div>`;
+  }).join('');
 }
 const SECTOR_SYMS=['SPY','QQQ','DIA','IWM','XLK','XLF','XLE','XLV','XLC','XLI','XLY','XLP','XLU','XLRE','GLD','SLV','USO','TLT','HYG'];
 function renderSectorHeatmap(){
@@ -1095,6 +1174,8 @@ function init(){
   });
   document.getElementById('corr-a')?.addEventListener('change',e=>{S.corrA=e.target.value;updateCorrStats();});
   document.getElementById('corr-b')?.addEventListener('change',e=>{S.corrB=e.target.value;updateCorrStats();});
+  const winEl=document.getElementById('corr-window');const winVal=document.getElementById('corr-window-val');
+  if(winEl){winEl.addEventListener('input',()=>{CORR_WIN=parseInt(winEl.value);if(winVal) winVal.textContent=CORR_WIN;updateCorrStats();});}
   const dz=document.getElementById('drop-zone');const fi=document.getElementById('file-input');
   if(dz){dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-over');});dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));dz.addEventListener('drop',e=>{dz.classList.remove('drag-over');handleFileDrop(e);});dz.addEventListener('click',()=>fi?.click());}
   if(fi) fi.addEventListener('change',handleFileDrop);
