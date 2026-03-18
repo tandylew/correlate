@@ -210,9 +210,12 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
     <span id="status-text">DEMO</span>
     <span class="market-clock" id="market-clock"></span>
   </div>
+  <div id="sym-search-wrap" style="position:relative;flex-shrink:0">
+    <input id="sym-search" placeholder="+ Symbol…" style="background:var(--surf2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px 8px;width:100px;transition:all 0.2s" autocomplete="off">
+  </div>
   <button id="theme-btn" title="Toggle theme (T)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:4px 6px;transition:color 0.15s">☀</button>
   <button id="help-btn" title="Keyboard shortcuts (?)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:4px 6px;transition:color 0.15s;font-family:'JetBrains Mono',monospace">?</button>
-  <button id="settings-btn" title="Settings">⚙</button>
+  <button id="settings-btn" title="Settings (opens alerts too)">⚙<span id="alert-badge" style="display:none;background:var(--warn);color:#000;border-radius:50%;font-size:9px;font-weight:700;padding:0 4px;margin-left:2px;vertical-align:top;line-height:14px"></span></button>
 </header>
 <div id="ticker"><div id="ticker-inner">Loading…</div></div>
 <nav id="main-nav">
@@ -279,8 +282,10 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
             <button class="ind-btn" data-ind="macd" title="Moving Average Convergence Divergence (12,26,9) — sub-chart">MACD</button>
             <button class="ind-btn" data-ind="stoch" title="Stochastic Oscillator (14,3) — sub-chart">Stoch</button>
             <button class="ind-btn" data-ind="obv" title="On-Balance Volume trend — sub-chart">OBV</button>
+            <button class="ind-btn" data-ind="fib" title="Fibonacci Retracement levels (38.2%, 50%, 61.8%) — price mode only">Fib</button>
           </div>
-          <button class="export-btn" id="export-btn" title="Export CSV">⬇ CSV</button>
+          <button class="export-btn" id="export-btn" title="Export all symbols as CSV">⬇ CSV</button>
+          <button class="export-btn" id="snap-btn" title="Copy chart as PNG image">📷</button>
         </div>
         <div id="chart-legend"></div>
       </div>
@@ -513,7 +518,7 @@ const SYMBOL_CFG={
 const YAHOO_RANGES={'1D':{interval:'5m',range:'1d'},'1W':{interval:'1h',range:'5d'},'1M':{interval:'1d',range:'1mo'},'3M':{interval:'1d',range:'3mo'},'YTD':{interval:'1d',range:'ytd'},'1Y':{interval:'1d',range:'1y'}};
 const RBH_RANGES={'1D':{interval:'5minute',span:'day'},'1W':{interval:'10minute',span:'week'},'1M':{interval:'day',span:'month'},'3M':{interval:'day',span:'3month'},'YTD':{interval:'day',span:'year'},'1Y':{interval:'day',span:'year'}};
 const CFG_VER=3;
-const CFG_DEF={_v:CFG_VER,source:'yahoo',corsProxy:'https://corsproxy.io/?',rbhToken:'',avKey:'',pollInterval:60,symbols:['SPY','USO','VIX'],tf:'1D',chartType:'line',priceMode:'indexed',indicators:{sma20:true,sma50:false,sma200:false,bb:false,volume:true,rsi:false,macd:false,stoch:false,obv:false,vwap:false},alerts:[],portfolio:[]};
+const CFG_DEF={_v:CFG_VER,source:'yahoo',corsProxy:'https://corsproxy.io/?',rbhToken:'',avKey:'',pollInterval:60,symbols:['SPY','USO','VIX'],tf:'1D',chartType:'line',priceMode:'indexed',indicators:{sma20:true,sma50:false,sma200:false,bb:false,volume:true,rsi:false,macd:false,stoch:false,obv:false,vwap:false,fib:false},alerts:[],portfolio:[]};
 let CFG;
 try{
   const _s=JSON.parse(localStorage.getItem('correlate-cfg')||'{}');
@@ -689,6 +694,12 @@ function checkAlerts(){
     const triggered=a.type==='above'?q.price>=a.price:q.price<=a.price;
     if(triggered){a.fired=true;showToast(`🔔 ${a.sym} ${a.type} $${a.price.toFixed(2)}`,'warn');saveCfg();}
   });
+  updateAlertBadge();
+}
+function updateAlertBadge(){
+  const badge=document.getElementById('alert-badge');if(!badge) return;
+  const active=CFG.alerts.filter(a=>!a.fired).length;
+  if(active>0){badge.textContent=active;badge.style.display='inline';}else{badge.style.display='none';}
 }
 function yahooSym(s){return s==='VIX'?'%5EVIX':s;}
 function parseYahoo(json){
@@ -988,6 +999,11 @@ function buildMainChart(){
       const vwap=calcVWAP(bars);
       datasets.push({label:'VWAP',data:vwap.map(v=>+v.toFixed(4)),borderColor:'rgba(251,146,60,0.85)',borderWidth:1.5,borderDash:[3,1],pointRadius:0,tension:0.1,fill:false,spanGaps:false});
     }
+    if(CFG.indicators.fib&&priceMode==='price'){
+      const hi=Math.max(...closes);const lo=Math.min(...closes);const diff=hi-lo;
+      const fibLevels=[[0.236,'rgba(253,224,71,0.5)'],[0.382,'rgba(251,146,60,0.6)'],[0.5,'rgba(248,113,113,0.6)'],[0.618,'rgba(239,68,68,0.7)'],[0.786,'rgba(167,139,250,0.5)']];
+      fibLevels.forEach(([ratio,col])=>{const level=hi-diff*ratio;datasets.push({label:`Fib ${(ratio*100).toFixed(1)}%`,data:new Array(closes.length).fill(+level.toFixed(4)),borderColor:col,borderWidth:1,borderDash:[2,3],pointRadius:0,tension:0,fill:false});});
+    }
   }
   const legendEl=document.getElementById('chart-legend');
   const bbLegend=CFG.indicators.bb&&priceMode==='price'?'<span class="legend-item"><span class="legend-dot" style="background:#6366f1;opacity:0.7"></span>BB(20)</span>':'';
@@ -996,7 +1012,7 @@ function buildMainChart(){
   if(legendEl) legendEl.innerHTML=syms.map(sym=>{const c=SYMBOL_CFG[sym]?.color||'#94a3b8';return`<span class="legend-item"><span class="legend-dot" style="background:${c}"></span>${sym}</span>`;}).join('')+(CFG.indicators.sma20?'<span class="legend-item"><span class="legend-dot" style="background:#fbbf24;opacity:0.7"></span>SMA20</span>':'')+(CFG.indicators.sma50?'<span class="legend-item"><span class="legend-dot" style="background:#f87171;opacity:0.7"></span>SMA50</span>':'')+sma200Legend+bbLegend+vwapLegend;
   const yTitle=priceMode==='price'?'Price ($)':'Indexed (base=100)';
   const yFmt=priceMode==='price'?v=>'$'+(v>=100?v.toFixed(0):v.toFixed(2)):v=>v.toFixed(1);
-  S.charts['main']=new Chart(canvas,{type:'line',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{backgroundColor:'#0d1520',borderColor:'#1a2535',borderWidth:1,callbacks:{label:ctx=>{const lbl=ctx.dataset.label;if(!lbl||lbl.startsWith('BB')) return null;if(lbl.startsWith('SMA')||lbl==='VWAP'||lbl.startsWith('BB')) return lbl.startsWith('BB')?null:` ${lbl}: $${ctx.parsed.y?.toFixed(2)}`;const bars=getFilteredBars(lbl,tf);const price=bars[ctx.dataIndex]?.close;return` ${lbl}: ${price!=null?'$'+(price>=100?price.toFixed(2):price.toFixed(3)):ctx.parsed.y.toFixed(2)}`;},title:ctx=>ctx[0].label}}},scales:{x:{grid:GRID,ticks:{color:'#64748b',maxTicksLimit:10}},y:{grid:GRID,ticks:{color:'#64748b',callback:yFmt},title:{display:true,text:yTitle,color:'#64748b'}}}}});
+  S.charts['main']=new Chart(canvas,{type:'line',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{backgroundColor:'#0d1520',borderColor:'#1a2535',borderWidth:1,callbacks:{label:ctx=>{const lbl=ctx.dataset.label;if(!lbl||lbl.startsWith('BB')) return null;if(lbl.startsWith('SMA')||lbl==='VWAP'||lbl.startsWith('BB')||lbl.startsWith('Fib')) return(lbl.startsWith('BB')||lbl.startsWith('Fib'))?null:` ${lbl}: $${ctx.parsed.y?.toFixed(2)}`;const bars=getFilteredBars(lbl,tf);const price=bars[ctx.dataIndex]?.close;return` ${lbl}: ${price!=null?'$'+(price>=100?price.toFixed(2):price.toFixed(3)):ctx.parsed.y.toFixed(2)}`;},title:ctx=>ctx[0].label}}},scales:{x:{grid:GRID,ticks:{color:'#64748b',maxTicksLimit:10}},y:{grid:GRID,ticks:{color:'#64748b',callback:yFmt},title:{display:true,text:yTitle,color:'#64748b'}}}}});
   buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();if(CFG.indicators.macd) buildMACDChart();if(CFG.indicators.stoch) buildStochChart();buildOBVChart();
 }
 function buildVolumeChart(){
@@ -1584,7 +1600,12 @@ function renderAlerts(){
   const el=document.getElementById('alerts-list');if(!el) return;
   const symSel=document.getElementById('alert-sym');
   if(symSel) symSel.innerHTML=CFG.symbols.map(s=>`<option>${s}</option>`).join('');
-  el.innerHTML=CFG.alerts.map((a,i)=>`<div class="alert-row"><span class="alert-sym" style="color:${SYMBOL_CFG[a.sym]?.color||'#94a3b8'}">${a.sym}</span><span class="alert-type">${a.type}</span><span class="alert-price">$${a.price.toFixed(2)}</span>${a.fired?'<span class="alert-fired">fired</span>':''}<button class="alert-remove" onclick="removeAlert(${i})">×</button></div>`).join('');
+  el.innerHTML=CFG.alerts.map((a,i)=>{
+    const q=S.data[a.sym]?.quote;const cur=q?.price;const dist=cur?((a.type==='above'?a.price-cur:cur-a.price)/cur*100):null;
+    const distStr=dist!=null&&!a.fired?`<span style="font-size:10px;color:var(--text3)">${dist>=0?'·':''} ${dist.toFixed(2)}% away</span>`:'';
+    return`<div class="alert-row"><span class="alert-sym" style="color:${SYMBOL_CFG[a.sym]?.color||'#94a3b8'}">${a.sym}</span><span class="alert-type">${a.type}</span><span class="alert-price">$${a.price.toFixed(2)}</span>${distStr}${a.fired?'<span class="alert-fired">fired</span>':''}<button class="alert-remove" onclick="removeAlert(${i})">×</button></div>`;
+  }).join('');
+  updateAlertBadge();
 }
 function addAlert(){
   const sym=document.getElementById('alert-sym')?.value;const type=document.getElementById('alert-type')?.value;
@@ -1618,6 +1639,25 @@ function init(){
   // Open settings with alerts
   document.getElementById('settings-btn')?.addEventListener('click',()=>{openSettings();renderAlerts();});
   document.getElementById('help-btn')?.addEventListener('click',()=>document.getElementById('help-dialog')?.showModal());
+  const symSearchEl=document.getElementById('sym-search');
+  if(symSearchEl){
+    symSearchEl.addEventListener('keydown',e=>{
+      if(e.key==='Enter'){
+        const sym=symSearchEl.value.trim().toUpperCase();if(!sym) return;
+        if(!CFG.symbols.includes(sym)){
+          CFG.symbols.push(sym);
+          if(!SYMBOL_CFG[sym]){const c=['#a78bfa','#4ade80','#f97316','#e879f9','#38bdf8'];SYMBOL_CFG[sym]={name:sym,color:c[CFG.symbols.length%c.length],vol:0.001,seed:sym.charCodeAt(0)};}
+          saveCfg();renderSymbolChips();updateCorrSelectors();updateWatchlistChips();
+          if(CFG.source!=='demo') fetchAllSymbols(CFG.tf);else updateUI();
+          showToast(`Added ${sym}`,'success');
+        } else showToast(`${sym} already in watchlist`,'warn');
+        symSearchEl.value='';
+      }
+      if(e.key==='Escape') symSearchEl.blur();
+    });
+    symSearchEl.addEventListener('focus',()=>symSearchEl.style.width='140px');
+    symSearchEl.addEventListener('blur',()=>symSearchEl.style.width='100px');
+  }
   document.getElementById('theme-btn')?.addEventListener('click',()=>{
     const light=document.body.classList.toggle('theme-light');
     localStorage.setItem('correlate-theme',light?'light':'dark');
@@ -1682,6 +1722,10 @@ function init(){
   });
   // Export CSV
   document.getElementById('export-btn')?.addEventListener('click',exportCSV);
+  document.getElementById('snap-btn')?.addEventListener('click',()=>{
+    const canvas=document.getElementById('main-chart');if(!canvas){showToast('No chart to capture','error');return;}
+    canvas.toBlob(blob=>{if(!blob) return;const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`correlate_${CFG.symbols[0]}_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.png`;a.click();URL.revokeObjectURL(url);showToast('Chart saved as PNG','success');});
+  });
   // Watchlist quickadd
   document.querySelectorAll('.wl-chip').forEach(btn=>{
     btn.addEventListener('click',()=>{
