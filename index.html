@@ -211,6 +211,11 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
 .toast.visible{transform:translateX(0)}.toast-error{border-color:var(--neg);color:var(--neg)}.toast-success{border-color:var(--pos);color:var(--pos)}.toast-warn{border-color:var(--warn);color:var(--warn)}
 ::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 @media(max-width:768px){#corr-charts-row{flex-wrap:wrap}.corr-chart-wrap{min-width:280px}}
+.wl-note-card{background:var(--surf2);border:1px solid var(--border);border-radius:4px;padding:8px 10px;display:flex;flex-direction:column;gap:6px}
+.wl-note-sym{font-weight:700;font-size:11px;letter-spacing:0.06em}
+.wl-note-textarea{background:transparent;border:none;border-top:1px solid var(--border);color:var(--text2);font-family:'JetBrains Mono',monospace;font-size:11px;resize:none;width:100%;padding:4px 0;outline:none;min-height:50px}
+.wl-note-textarea:focus{color:var(--text)}
+.wl-note-meta{font-size:9px;color:var(--text3);display:flex;justify-content:space-between}
 #chart-wrapper:fullscreen{background:var(--bg);padding:16px;display:flex;flex-direction:column}
 #chart-wrapper:fullscreen #main-chart-wrap{flex:1}
 @media(max-width:600px){.price-card{min-width:120px}#corr-header{flex-direction:column;gap:12px}#corr-charts-row{flex-direction:column}.ind-controls{gap:2px;flex-wrap:wrap}.ct-group{display:none}.signal-card{min-width:100%}#price-grid-header{flex-wrap:wrap}.sector-tile{min-width:45px;max-width:70px}#stats-row{display:none}}
@@ -264,6 +269,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       <button class="wl-chip" data-sym="USO">USO</button>
       <button class="wl-chip" data-sym="VIX">VIX</button>
     </div>
+    <div id="fear-greed-bar" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:8px 12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap"></div>
     <div id="stats-row" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     <div id="signals-bar" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     <div id="sector-heatmap" class="sector-map"></div>
@@ -411,6 +417,13 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
         <button class="btn btn-primary" onclick="calcPositionSize()">Calculate</button>
       </div>
       <div id="ps-result" style="margin-top:10px;font-size:12px"></div>
+    </div>
+    <div id="watchlist-notes-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3)">Watchlist Notes</span>
+        <span style="font-size:10px;color:var(--text3)">Notes persist in localStorage</span>
+      </div>
+      <div id="watchlist-notes-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px"></div>
     </div>
     <div id="backtest-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
@@ -1352,7 +1365,7 @@ function updateRegimeBar(){
   }
   bar.innerHTML=items.length?items.join('<span style="color:var(--border2);margin:0 2px">|</span>'):'<span style="color:var(--text3);font-size:10px">Loading market data…</span>';
 }
-function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();}if(S.activeTab==='correlate') updateCorrStats();if(S.activeTab==='portfolio') renderPortfolio();updateCorrSelectors();updateWatchlistChips();}
+function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();}if(S.activeTab==='correlate') updateCorrStats();if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();}updateCorrSelectors();updateWatchlistChips();}
 function startPolling(){stopPolling();if(CFG.pollInterval<=0||CFG.source==='demo') return;S.pollTimer=setInterval(()=>fetchAllSymbols(),CFG.pollInterval*1000);}
 function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
 function startDemoTick(){stopDemoTick();S.demoTicker=setInterval(tickDemoData,10000);}
@@ -1362,8 +1375,8 @@ function switchTab(tab){
   const panel=document.getElementById('tab-'+tab);const btn=document.querySelector(`.nav-btn[data-tab="${tab}"]`);
   if(panel) panel.classList.add('active');if(btn) btn.classList.add('active');
   if(tab==='correlate'){updateCorrStats();if(CFG.source!=='demo'&&Object.keys(yieldCache).length===0) setTimeout(fetchYieldCurve,200);}
-  if(tab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();}
-  if(tab==='portfolio') renderPortfolio();
+  if(tab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();}
+  if(tab==='portfolio'){renderPortfolio();renderWatchlistNotes();}
 }
 function switchIngest(type){
   document.querySelectorAll('.ingest-panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.ingest-nav-btn').forEach(b=>b.classList.remove('active'));
@@ -1755,6 +1768,35 @@ function exportCSV(){
   a.href=URL.createObjectURL(blob);a.download=`${fname}_${new Date().toISOString().slice(0,10)}.csv`;a.click();
   showToast(`Exported ${symsWithData.length} symbol(s)`,'success');
 }
+// === WATCHLIST NOTES ===
+function loadNotes(){try{return JSON.parse(localStorage.getItem('correlate-notes')||'{}');}catch{return {};}}
+function saveNote(sym,text){const notes=loadNotes();notes[sym]=text;localStorage.setItem('correlate-notes',JSON.stringify(notes));}
+function renderWatchlistNotes(){
+  const el=document.getElementById('watchlist-notes-grid');if(!el) return;
+  const notes=loadNotes();
+  el.innerHTML=CFG.symbols.map(sym=>{
+    const q=S.data[sym]?.quote;const cfg=SYMBOL_CFG[sym]||{color:'#94a3b8'};
+    const note=notes[sym]||'';
+    const pct=q?.changePct;const pctStr=pct!=null?`<span class="${pct>=0?'pos':'neg'}" style="font-size:10px">${pct>=0?'+':''}${pct.toFixed(2)}%</span>`:'';
+    const ts=localStorage.getItem(`correlate-note-ts-${sym}`)||'';
+    return`<div class="wl-note-card">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span class="wl-note-sym" style="color:${cfg.color}">${sym}</span>
+        ${pctStr}
+      </div>
+      <textarea class="wl-note-textarea" placeholder="Add trade thesis, notes…" rows="3" oninput="saveNoteEvent(this,'${sym}')">${escHtml(note)}</textarea>
+      <div class="wl-note-meta"><span id="note-ts-${sym}">${ts?'Saved '+ts:''}</span><span style="cursor:pointer;color:var(--text3)" onclick="clearNote('${sym}')">clear</span></div>
+    </div>`;
+  }).join('');
+}
+function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function saveNoteEvent(el,sym){
+  saveNote(sym,el.value);
+  const now=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  localStorage.setItem(`correlate-note-ts-${sym}`,now);
+  const tsEl=document.getElementById(`note-ts-${sym}`);if(tsEl) tsEl.textContent='Saved '+now;
+}
+function clearNote(sym){saveNote(sym,'');const tsEl=document.getElementById(`note-ts-${sym}`);if(tsEl) tsEl.textContent='';renderWatchlistNotes();}
 function renderPortfolio(){
   const tbody=document.getElementById('portfolio-tbody');const summary=document.getElementById('portfolio-summary');
   if(!tbody) return;
@@ -2059,6 +2101,69 @@ function init(){
   updateClock();setInterval(updateClock,15000);
   if(CFG.source==='demo'){initDemoData();updateUI();startDemoTick();}
   else{initDemoData();updateUI();fetchAllSymbols(CFG.tf).then(()=>{startPolling();setTimeout(fetchSectorData,1000);});}
+}
+// === FEAR & GREED COMPOSITE ===
+function computeFearGreed(){
+  // Combines: VIX level (inverted), SPY momentum, SPY vs SMA50, market breadth, volume spike
+  const components=[];
+  // 1. VIX (inverted — low VIX = greed)
+  const vixQ=S.data['VIX']?.quote;
+  if(vixQ?.price){const v=vixQ.price;const vScore=Math.max(0,Math.min(100,100-(v-10)/30*100));components.push({name:'Volatility',score:vScore,weight:2});}
+  // 2. SPY momentum (5-day ROC)
+  const spyBars=S.data['SPY']?.bars||[];
+  if(spyBars.length>=20){
+    const cl=spyBars.map(b=>b.close);const last=cl[cl.length-1];const prev5=cl[cl.length-6]||last;
+    const roc5=(last/prev5-1)*100;const mScore=Math.max(0,Math.min(100,50+roc5*10));
+    components.push({name:'Momentum',score:mScore,weight:2});
+    // SPY vs SMA50
+    const sma50arr=calcSMA(cl,50);const sma50=sma50arr[sma50arr.length-1]??last;
+    const vsScore=last>sma50?65:35;components.push({name:'Trend',score:vsScore,weight:1.5});
+  }
+  // 3. Breadth (market advance/decline using sector ETF data)
+  const sectorSyms=['SPY','QQQ','XLK','XLF','XLE','XLV','XLC','XLI'];
+  let adv=0,dec=0;
+  sectorSyms.forEach(s=>{const pct=S.data[s]?.quote?.changePct??0;if(pct>0) adv++;else if(pct<0) dec++;});
+  if(adv+dec>0){const bScore=(adv/(adv+dec))*100;components.push({name:'Breadth',score:bScore,weight:1.5});}
+  // 4. Safe haven demand (TLT vs SPY) — falling TLT = greed
+  const tltQ=S.data['TLT']?.quote;
+  if(tltQ?.changePct!=null&&vixQ?.changePct!=null){
+    const safeScore=Math.max(0,Math.min(100,50-(tltQ.changePct)*5));
+    components.push({name:'Safe Haven',score:safeScore,weight:1});
+  }
+  // 5. Volume (high volume up day = greed)
+  if(spyBars.length>=20){
+    const vols=spyBars.map(b=>b.volume||0);const avgVol=vols.slice(-20,-1).reduce((a,b)=>a+b,0)/19||1;const lastVol=vols[vols.length-1]||0;
+    const lastClose=spyBars[spyBars.length-1]?.close||1;const prevClose=spyBars[spyBars.length-2]?.close||1;
+    const upDay=lastClose>prevClose;const volRatio=lastVol/avgVol;
+    const volScore=upDay?(Math.min(100,50+volRatio*25)):(Math.max(0,50-volRatio*25));
+    components.push({name:'Volume',score:volScore,weight:1});
+  }
+  if(!components.length) return null;
+  const totalW=components.reduce((s,c)=>s+c.weight,0);
+  const composite=components.reduce((s,c)=>s+c.score*c.weight,0)/totalW;
+  return{score:Math.round(composite),components};
+}
+function renderFearGreed(){
+  const el=document.getElementById('fear-greed-bar');if(!el) return;
+  if(CFG.source==='demo'&&!S.data['SPY']?.bars?.length){el.innerHTML='';return;}
+  const result=computeFearGreed();
+  if(!result){el.innerHTML='';return;}
+  const {score,components}=result;
+  const label=score>=75?'EXTREME GREED':score>=60?'GREED':score>=40?'NEUTRAL':score>=25?'FEAR':'EXTREME FEAR';
+  const color=score>=75?'#4ade80':score>=60?'#86efac':score>=40?'#fbbf24':score>=25?'#f87171':'#ef4444';
+  const gaugeW=200;const gaugeH=8;
+  const meterHtml=`<div style="display:flex;flex-direction:column;gap:4px;min-width:${gaugeW}px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em">Fear & Greed</span>
+      <span style="font-weight:700;font-size:13px;color:${color}">${score}</span>
+    </div>
+    <div style="position:relative;height:${gaugeH}px;border-radius:${gaugeH/2}px;background:linear-gradient(to right,#ef4444,#f87171,#fbbf24,#86efac,#4ade80);overflow:hidden">
+      <div style="position:absolute;left:${score}%;top:-2px;width:3px;height:${gaugeH+4}px;background:#fff;border-radius:2px;transform:translateX(-50%);box-shadow:0 0 4px rgba(0,0,0,0.5)"></div>
+    </div>
+    <div style="text-align:center;font-size:11px;font-weight:700;color:${color}">${label}</div>
+  </div>`;
+  const compHtml=components.map(c=>{const cColor=c.score>=60?'var(--pos)':c.score<=40?'var(--neg)':'var(--warn)';return`<div style="display:flex;flex-direction:column;gap:2px;min-width:60px"><span style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">${c.name}</span><div style="height:3px;background:var(--border);border-radius:2px"><div style="width:${c.score}%;height:100%;background:${cColor};border-radius:2px"></div></div><span style="font-size:9px;font-weight:700;color:${cColor}">${Math.round(c.score)}</span></div>`;}).join('');
+  el.innerHTML=meterHtml+`<div style="display:flex;gap:10px;flex-wrap:wrap;flex:1">${compHtml}</div>`;
 }
 // === MOMENTUM COMPOSITE ===
 function renderMomentumPanel(){
