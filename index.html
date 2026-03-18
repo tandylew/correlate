@@ -150,6 +150,11 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
 .wl-chip:hover{border-color:var(--accent);color:var(--accent)}.wl-chip.active{border-color:var(--text3);color:var(--text3);cursor:default;opacity:0.5}
 .export-btn{background:none;border:1px solid var(--border);border-radius:3px;color:var(--text3);cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 8px;transition:all 0.15s}
 .export-btn:hover{border-color:var(--accent);color:var(--accent)}
+.yield-tile{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:50px}
+.yt-lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em}
+.yt-bar{width:20px;background:var(--accent);border-radius:2px 2px 0 0;transition:height 0.3s;min-height:4px}
+.yt-rate{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.yt-chg{font-size:9px;color:var(--text3)}
 .signal-card{display:flex;align-items:center;gap:8px;background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:7px 12px;font-size:11px;flex:1;min-width:140px}
 .signal-sym{font-weight:700;font-size:11px;min-width:40px}
 .signal-pill{border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700;letter-spacing:0.04em;white-space:nowrap}
@@ -198,6 +203,8 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
 .toast.visible{transform:translateX(0)}.toast-error{border-color:var(--neg);color:var(--neg)}.toast-success{border-color:var(--pos);color:var(--pos)}.toast-warn{border-color:var(--warn);color:var(--warn)}
 ::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 @media(max-width:768px){#corr-charts-row{flex-wrap:wrap}.corr-chart-wrap{min-width:280px}}
+#chart-wrapper:fullscreen{background:var(--bg);padding:16px;display:flex;flex-direction:column}
+#chart-wrapper:fullscreen #main-chart-wrap{flex:1}
 @media(max-width:600px){.price-card{min-width:120px}#corr-header{flex-direction:column;gap:12px}#corr-charts-row{flex-direction:column}.ind-controls{gap:2px;flex-wrap:wrap}.ct-group{display:none}.signal-card{min-width:100%}#price-grid-header{flex-wrap:wrap}.sector-tile{min-width:45px;max-width:70px}#stats-row{display:none}}
 </style>
 </head>
@@ -286,6 +293,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
           </div>
           <button class="export-btn" id="export-btn" title="Export all symbols as CSV">⬇ CSV</button>
           <button class="export-btn" id="snap-btn" title="Copy chart as PNG image">📷</button>
+          <button class="export-btn" id="fullscreen-btn" title="Toggle fullscreen chart">⛶</button>
         </div>
         <div id="chart-legend"></div>
       </div>
@@ -326,6 +334,15 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
     <div id="corr-matrix-wrap" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Correlation Matrix</div>
       <div id="corr-matrix"></div>
+    </div>
+    <div id="yield-curve-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3)">US Treasury Yield Curve</span>
+        <button class="btn" onclick="fetchYieldCurve()" style="font-size:10px;padding:3px 8px">Refresh</button>
+      </div>
+      <div id="yield-curve-content" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;min-height:60px">
+        <span style="color:var(--text3);font-size:11px">Click Refresh to load live Treasury rates.</span>
+      </div>
     </div>
     <div id="divergence-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Divergence & Pair Trade Signal</div>
@@ -1244,7 +1261,7 @@ function switchTab(tab){
   S.activeTab=tab;document.querySelectorAll('.main-tab').forEach(el=>el.classList.remove('active'));document.querySelectorAll('.nav-btn').forEach(el=>el.classList.remove('active'));
   const panel=document.getElementById('tab-'+tab);const btn=document.querySelector(`.nav-btn[data-tab="${tab}"]`);
   if(panel) panel.classList.add('active');if(btn) btn.classList.add('active');
-  if(tab==='correlate') updateCorrStats();
+  if(tab==='correlate'){updateCorrStats();if(CFG.source!=='demo'&&Object.keys(yieldCache).length===0) setTimeout(fetchYieldCurve,200);}
   if(tab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();}
   if(tab==='portfolio') renderPortfolio();
 }
@@ -1388,6 +1405,31 @@ function renderSignals(){
     const regimeBadge=sig.regime!=='unknown'?`<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:${sig.regime==='bull'?'rgba(74,222,128,0.12)':'rgba(248,113,113,0.12)'};color:${sig.regime==='bull'?'var(--pos)':'var(--neg)'};border:1px solid ${sig.regime==='bull'?'rgba(74,222,128,0.3)':'rgba(248,113,113,0.3)'}">${sig.regime==='bull'?'▲':'▼'} ${sig.regime.toUpperCase()}</span>`:'';
     return`<div class="signal-card"><span class="signal-sym" style="color:${cfg.color}">${sym}</span><span class="signal-pill ${sig.cls}">${sig.label}</span>${regimeBadge}<span class="signal-detail">${sig.reasons||`Score: ${sig.score}`}</span></div>`;
   }).join('');
+}
+const YIELD_SYMS=[{sym:'^IRX',label:'3M'},{sym:'^FVX',label:'5Y'},{sym:'^TNX',label:'10Y'},{sym:'^TYX',label:'30Y'}];
+let yieldCache={};
+async function fetchYieldCurve(){
+  const el=document.getElementById('yield-curve-content');if(!el) return;
+  el.innerHTML='<span style="color:var(--text3);font-size:11px">Loading yields…</span>';
+  try{
+    const rates=await Promise.all(YIELD_SYMS.map(async({sym,label})=>{
+      if(yieldCache[sym]&&Date.now()-yieldCache[sym].t<300000) return{...yieldCache[sym],label};
+      const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=1d`;
+      const res=await fetchWithProxy(url);const json=await res.json();
+      const price=json?.chart?.result?.[0]?.meta?.regularMarketPrice;
+      const prev=json?.chart?.result?.[0]?.meta?.chartPreviousClose;
+      yieldCache[sym]={rate:price,prev,t:Date.now()};return{rate:price,prev,label};
+    }));
+    // Compute 2s10s spread
+    const r2=rates.find(r=>r.label==='3M')?.rate||0;const r10=rates.find(r=>r.label==='10Y')?.rate||0;
+    const spread=(r10-r2).toFixed(2);const isInverted=r10<r2;
+    el.innerHTML=rates.map(({rate,prev,label})=>{
+      if(rate==null) return`<div class="yield-tile"><div class="yt-lbl">${label}</div><div class="yt-rate">—</div></div>`;
+      const chg=prev?(rate-prev).toFixed(3):'';const cls=prev?(rate>prev?'pos':'neg'):'';
+      const H=40;const maxR=Math.max(...rates.filter(r=>r.rate).map(r=>r.rate));const barH=maxR?Math.round(rate/maxR*H):0;
+      return`<div class="yield-tile"><div class="yt-lbl">${label}</div><div class="yt-bar" style="height:${barH}px"></div><div class="yt-rate">${rate?.toFixed(2)}%</div><div class="yt-chg ${cls}">${chg?chg+'bps':''}</div></div>`;
+    }).join('')+`<div style="margin-left:auto;font-size:11px;padding:4px 8px;border-radius:4px;background:${isInverted?'rgba(248,113,113,0.1)':'rgba(74,222,128,0.1)'};border:1px solid ${isInverted?'var(--neg)':'var(--pos)'}"><div style="font-size:9px;color:var(--text3)">2s10s Spread</div><div style="color:${isInverted?'var(--neg)':'var(--pos)'};font-weight:700">${parseFloat(spread)>=0?'+':''}${spread}%</div>${isInverted?'<div style="font-size:9px;color:var(--neg)">Inverted</div>':''}</div>`;
+  }catch(e){el.innerHTML=`<span style="color:var(--neg);font-size:11px">Error: ${e.message}</span>`;}
 }
 function updateDivergencePanel(){
   const el=document.getElementById('divergence-content');if(!el) return;
@@ -1787,6 +1829,12 @@ function init(){
   });
   // Export CSV
   document.getElementById('export-btn')?.addEventListener('click',exportCSV);
+  document.getElementById('fullscreen-btn')?.addEventListener('click',()=>{
+    const wrapper=document.getElementById('chart-wrapper');if(!wrapper) return;
+    if(!document.fullscreenElement){wrapper.requestFullscreen?.().then(()=>setTimeout(buildMainChart,100)).catch(()=>{});}
+    else{document.exitFullscreen?.();}
+  });
+  document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement) setTimeout(buildMainChart,100);});
   document.getElementById('snap-btn')?.addEventListener('click',()=>{
     const canvas=document.getElementById('main-chart');if(!canvas){showToast('No chart to capture','error');return;}
     canvas.toBlob(blob=>{if(!blob) return;const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`correlate_${CFG.symbols[0]}_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.png`;a.click();URL.revokeObjectURL(url);showToast('Chart saved as PNG','success');});
