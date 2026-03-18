@@ -126,6 +126,9 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
 #cfg-new-sym:focus{outline:none;border-color:var(--accent)}
 .dialog-footer{display:flex;gap:8px;justify-content:flex-end;padding:12px 20px;border-top:1px solid var(--border);position:sticky;bottom:0;background:var(--surf)}
 .pc-sparkline{margin-top:6px;line-height:0}
+.pc-primary{border-color:var(--accent) !important;box-shadow:0 0 0 1px var(--accent) inset}
+.sort-btn{background:none;border:1px solid var(--border);border-radius:3px;color:var(--text3);cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 7px;transition:all 0.15s}
+.sort-btn:hover{color:var(--text);border-color:var(--border2)}.sort-btn.active{color:var(--accent);border-color:var(--accent);background:rgba(34,211,238,0.08)}
 .pc-52w{display:flex;align-items:center;gap:5px;margin-top:5px;font-size:9px;color:var(--text3)}
 .pc-52w-bar{flex:1;height:3px;background:var(--border2);border-radius:2px;overflow:hidden}
 .pc-52w-fill{height:100%;background:linear-gradient(90deg,var(--neg),var(--warn),var(--pos));border-radius:2px;transition:width 0.4s}
@@ -206,7 +209,8 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
     <span id="status-text">DEMO</span>
     <span class="market-clock" id="market-clock"></span>
   </div>
-  <button id="theme-btn" title="Toggle theme" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:4px 6px;transition:color 0.15s">☀</button>
+  <button id="theme-btn" title="Toggle theme (T)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:4px 6px;transition:color 0.15s">☀</button>
+  <button id="help-btn" title="Keyboard shortcuts (?)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:4px 6px;transition:color 0.15s;font-family:'JetBrains Mono',monospace">?</button>
   <button id="settings-btn" title="Settings">⚙</button>
 </header>
 <div id="ticker"><div id="ticker-inner">Loading…</div></div>
@@ -218,6 +222,14 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
 </nav>
 <main id="app-main">
   <section id="tab-market" class="main-tab active">
+    <div id="price-grid-header" style="display:flex;align-items:center;gap:8px;padding:4px 0">
+      <span style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em">Sort:</span>
+      <button class="sort-btn active" data-sort="default" onclick="setSortMode('default')">Default</button>
+      <button class="sort-btn" data-sort="chg-desc" onclick="setSortMode('chg-desc')">▼ Chg%</button>
+      <button class="sort-btn" data-sort="chg-asc" onclick="setSortMode('chg-asc')">▲ Chg%</button>
+      <button class="sort-btn" data-sort="alpha" onclick="setSortMode('alpha')">A-Z</button>
+      <span id="grid-subtitle" style="margin-left:auto;font-size:10px;color:var(--text3)"></span>
+    </div>
     <div id="price-grid"></div>
     <div class="wl-quick" id="wl-quick">
       <span class="wl-label">Add:</span>
@@ -441,6 +453,20 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
   </div>
   <div class="dialog-footer"><button class="btn" id="dlg-cancel">Cancel</button><button class="btn btn-primary" id="cfg-save">Save &amp; Apply</button></div>
 </dialog>
+<dialog id="help-dialog" style="max-width:420px">
+  <div class="dialog-header"><h2>Keyboard Shortcuts</h2><button class="dlg-x" onclick="document.getElementById('help-dialog').close()">×</button></div>
+  <div class="dialog-body" style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+    <div style="padding:6px 0;border-bottom:1px solid var(--border)"><kbd style="background:var(--surf2);border:1px solid var(--border2);border-radius:3px;padding:1px 6px;font-size:11px">1</kbd> Market tab</div>
+    <div style="padding:6px 0;border-bottom:1px solid var(--border)"><kbd style="background:var(--surf2);border:1px solid var(--border2);border-radius:3px;padding:1px 6px;font-size:11px">2</kbd> Correlate tab</div>
+    <div style="padding:6px 0;border-bottom:1px solid var(--border)"><kbd style="background:var(--surf2);border:1px solid var(--border2);border-radius:3px;padding:1px 6px;font-size:11px">3</kbd> Portfolio tab</div>
+    <div style="padding:6px 0;border-bottom:1px solid var(--border)"><kbd style="background:var(--surf2);border:1px solid var(--border2);border-radius:3px;padding:1px 6px;font-size:11px">4</kbd> Ingest tab</div>
+    <div style="padding:6px 0;border-bottom:1px solid var(--border)"><kbd style="background:var(--surf2);border:1px solid var(--border2);border-radius:3px;padding:1px 6px;font-size:11px">R</kbd> Refresh data</div>
+    <div style="padding:6px 0;border-bottom:1px solid var(--border)"><kbd style="background:var(--surf2);border:1px solid var(--border2);border-radius:3px;padding:1px 6px;font-size:11px">T</kbd> Toggle theme</div>
+    <div style="padding:6px 0;border-bottom:1px solid var(--border)"><kbd style="background:var(--surf2);border:1px solid var(--border2);border-radius:3px;padding:1px 6px;font-size:11px">?</kbd> Help overlay</div>
+    <div style="padding:6px 0;border-bottom:1px solid var(--border)"><kbd style="background:var(--surf2);border:1px solid var(--border2);border-radius:3px;padding:1px 6px;font-size:11px">Esc</kbd> Close dialog</div>
+  </div>
+  <div style="padding:12px 20px;font-size:11px;color:var(--text3)">Click sector heatmap tiles to add symbols to watchlist. Click price cards to select for chart.</div>
+</dialog>
 <script>
 'use strict';
 const CORR_WINDOW=20;
@@ -613,12 +639,15 @@ function calcVWAP(bars){
 }
 function sparklineSVG(bars,color){
   if(!bars||bars.length<2) return '';
-  const pts=bars.slice(-20);const prices=pts.map(b=>b.close);
+  const pts=bars.slice(-30);const prices=pts.map(b=>b.close);
   const min=Math.min(...prices),max=Math.max(...prices),range=max-min||1;
-  const W=80,H=24;
-  const points=prices.map((p,i)=>`${(i/(prices.length-1)*W).toFixed(1)},${((1-(p-min)/range)*H).toFixed(1)}`).join(' ');
+  const W=88,H=28;const id='sp'+Math.random().toString(36).slice(2,7);
+  const coords=prices.map((p,i)=>[+(i/(prices.length-1)*W).toFixed(1),+((1-(p-min)/range)*H).toFixed(1)]);
+  const points=coords.map(([x,y])=>`${x},${y}`).join(' ');
+  const fillPts=[`0,${H}`,...coords.map(([x,y])=>`${x},${y}`),`${W},${H}`].join(' ');
   const isUp=prices[prices.length-1]>=prices[0];
-  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;overflow:visible"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/></svg>`;
+  const c=color||'#94a3b8';
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;overflow:visible"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${c}" stop-opacity="0.25"/><stop offset="100%" stop-color="${c}" stop-opacity="0.02"/></linearGradient></defs><polygon points="${fillPts}" fill="url(#${id})"/><polyline points="${points}" fill="none" stroke="${c}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/></svg>`;
 }
 function showToast(msg,type='info'){
   const t=document.createElement('div');t.className='toast toast-'+type;t.textContent=msg;
@@ -1029,7 +1058,11 @@ function updateTicker(){
 }
 function updatePriceCards(){
   const grid=document.getElementById('price-grid');if(!grid) return;
-  grid.innerHTML=CFG.symbols.map(sym=>{
+  const syms=getSortedSymbols();
+  // Update subtitle with quick stats
+  const sub=document.getElementById('grid-subtitle');
+  if(sub){const adv=syms.filter(s=>( S.data[s]?.quote?.changePct||0)>0).length;const dec=syms.filter(s=>(S.data[s]?.quote?.changePct||0)<0).length;sub.textContent=`${adv} up · ${dec} down`;}
+  grid.innerHTML=syms.map(sym=>{
     const q=S.data[sym]?.quote;const cfg=SYMBOL_CFG[sym]||{color:'#94a3b8',name:sym};
     const bars=S.data[sym]?.bars||[];
     if(!q||!q.price) return`<div class="price-card" data-sym="${sym}" style="--sym-color:${cfg.color}"><div class="pc-top"><div><div class="pc-sym" style="color:${cfg.color}">${sym}</div><div class="pc-name">${cfg.name||''}</div></div></div><div class="pc-price">—</div></div>`;
@@ -1037,7 +1070,8 @@ function updatePriceCards(){
     const spark=sparklineSVG(bars,cfg.color);
     const st=calcSymStats(sym);
     const range52=st?`<div class="pc-52w"><div class="pc-52w-bar"><div class="pc-52w-fill" style="width:${st.lo52&&st.hi52&&parseFloat(st.hi52)>parseFloat(st.lo52)?Math.min(100,Math.max(0,((q.price-parseFloat(st.lo52))/(parseFloat(st.hi52)-parseFloat(st.lo52))*100))).toFixed(1):50}%"></div></div><span class="pc-52w-lo">$${st.lo52}</span><span class="pc-52w-hi">$${st.hi52}</span></div>`:'';
-    return`<div class="price-card" data-sym="${sym}" style="--sym-color:${cfg.color}">
+    const isPrimary=CFG.symbols[0]===sym;
+    return`<div class="price-card${isPrimary?' pc-primary':''}" data-sym="${sym}" style="--sym-color:${cfg.color};cursor:pointer" onclick="setPrimarySymbol('${sym}')">
       <div class="pc-top"><div><div class="pc-sym" style="color:${cfg.color}">${sym}</div><div class="pc-name">${cfg.name||''}</div></div><div class="pc-chg ${cls}">${fmtChg(q.changePct,true)}</div></div>
       <div class="pc-price ${cls}">$${fmtP(q.price)}</div>
       <div class="pc-sub"><span>H $${fmtP(q.high||q.price)}</span><span>L $${fmtP(q.low||q.price)}</span><span class="${cls}">${fmtChg(q.change,false)}</span></div>
@@ -1299,6 +1333,26 @@ function renderSectorHeatmap(){
   const breadth=total>0?`<div style="display:flex;align-items:center;gap:10px;padding:4px 0 8px;font-size:11px;width:100%"><span style="color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;font-size:10px">Breadth</span><span style="color:var(--pos)">▲ ${adv}</span><span style="color:var(--neg)">▼ ${dec}</span>${unch>0?`<span style="color:var(--text3)">= ${unch}</span>`:''}<div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden"><div style="width:${total>0?(adv/total*100).toFixed(1):50}%;height:100%;background:var(--pos);border-radius:2px"></div></div><span style="color:var(--text3)">${total>0?((adv/total)*100).toFixed(0):50}% adv</span></div>`:'';
   el.innerHTML=breadth+tiles;
 }
+let SORT_MODE='default';
+function setSortMode(mode){
+  SORT_MODE=mode;
+  document.querySelectorAll('.sort-btn').forEach(b=>b.classList.toggle('active',b.dataset.sort===mode));
+  updatePriceCards();
+}
+function getSortedSymbols(){
+  const syms=[...CFG.symbols];
+  if(SORT_MODE==='chg-desc') syms.sort((a,b)=>(S.data[b]?.quote?.changePct||0)-(S.data[a]?.quote?.changePct||0));
+  else if(SORT_MODE==='chg-asc') syms.sort((a,b)=>(S.data[a]?.quote?.changePct||0)-(S.data[b]?.quote?.changePct||0));
+  else if(SORT_MODE==='alpha') syms.sort();
+  return syms;
+}
+function setPrimarySymbol(sym){
+  if(CFG.symbols[0]===sym) return;
+  const idx=CFG.symbols.indexOf(sym);if(idx<0) return;
+  CFG.symbols.splice(idx,1);CFG.symbols.unshift(sym);
+  saveCfg();renderSymbolChips();updatePriceCards();buildMainChart();
+  showToast(`${sym} set as primary chart symbol`,'success');
+}
 function addWatchSym(sym){
   if(CFG.symbols.includes(sym)){showToast(`${sym} already in watchlist`);return;}
   CFG.symbols.push(sym);
@@ -1415,6 +1469,7 @@ function init(){
   document.querySelectorAll('.ingest-nav-btn').forEach(btn=>btn.addEventListener('click',()=>switchIngest(btn.dataset.ingest)));
   // Open settings with alerts
   document.getElementById('settings-btn')?.addEventListener('click',()=>{openSettings();renderAlerts();});
+  document.getElementById('help-btn')?.addEventListener('click',()=>document.getElementById('help-dialog')?.showModal());
   document.getElementById('theme-btn')?.addEventListener('click',()=>{
     const light=document.body.classList.toggle('theme-light');
     localStorage.setItem('correlate-theme',light?'light':'dark');
@@ -1501,11 +1556,13 @@ function init(){
   document.addEventListener('keydown',e=>{
     if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT') return;
     if(e.key==='r'||e.key==='R'){if(CFG.source!=='demo') fetchAllSymbols();}
+    if(e.key==='t'||e.key==='T'){document.getElementById('theme-btn')?.click();}
+    if(e.key==='?'||e.key==='/'){document.getElementById('help-dialog')?.showModal();}
     if(e.key==='1') switchTab('market');
     if(e.key==='2') switchTab('correlate');
     if(e.key==='3') switchTab('portfolio');
     if(e.key==='4') switchTab('ingest');
-    if(e.key==='Escape') closeSettings();
+    if(e.key==='Escape'){closeSettings();document.getElementById('help-dialog')?.close();}
   });
   updateClock();setInterval(updateClock,15000);
   if(CFG.source==='demo'){initDemoData();updateUI();startDemoTick();}
