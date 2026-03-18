@@ -346,6 +346,8 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
             <button class="ind-btn" data-ind="kc" title="Keltner Channels (20,2×ATR) — similar to BB but ATR-based, price mode only">KC</button>
             <button class="ind-btn" data-ind="tsi" title="True Strength Index (13,7) — momentum oscillator. >0=bullish, &lt;0=bearish">TSI</button>
             <button class="ind-btn" data-ind="ema_cloud" title="EMA Cloud: EMA9 vs EMA21 — bull above (green), bear below (red). Price mode only">EMA Cloud</button>
+            <button class="ind-btn" data-ind="donchian" title="Donchian Channels (20) — highest high / lowest low. Price mode only">Donchian</button>
+            <button class="ind-btn" data-ind="supertrend" title="SuperTrend (10,3×ATR) — bullish/bearish trend signal. Price mode only">SuperTrend</button>
           </div>
           <button class="export-btn" id="export-btn" title="Export all symbols as CSV">⬇ CSV</button>
           <button class="export-btn" id="snap-btn" title="Copy chart as PNG image">📷</button>
@@ -1019,7 +1021,7 @@ const SYMBOL_CFG={
 const YAHOO_RANGES={'1D':{interval:'5m',range:'1d'},'1W':{interval:'1h',range:'5d'},'1M':{interval:'1d',range:'1mo'},'3M':{interval:'1d',range:'3mo'},'YTD':{interval:'1d',range:'ytd'},'1Y':{interval:'1d',range:'1y'}};
 const RBH_RANGES={'1D':{interval:'5minute',span:'day'},'1W':{interval:'10minute',span:'week'},'1M':{interval:'day',span:'month'},'3M':{interval:'day',span:'3month'},'YTD':{interval:'day',span:'year'},'1Y':{interval:'day',span:'year'}};
 const CFG_VER=3;
-const CFG_DEF={_v:CFG_VER,source:'yahoo',corsProxy:'https://corsproxy.io/?',rbhToken:'',avKey:'',pollInterval:60,symbols:['SPY','USO','VIX'],tf:'1D',chartType:'line',priceMode:'indexed',indicators:{sma20:true,sma50:false,sma200:false,bb:false,volume:true,rsi:false,macd:false,stoch:false,obv:false,vwap:false,fib:false,adx:false,ichimoku:false,cci:false,williams:false,roc:false,chop:false,mfi:false,psar:false,kc:false,tsi:false,ema_cloud:false},alerts:[],portfolio:[]};
+const CFG_DEF={_v:CFG_VER,source:'yahoo',corsProxy:'https://corsproxy.io/?',rbhToken:'',avKey:'',pollInterval:60,symbols:['SPY','USO','VIX'],tf:'1D',chartType:'line',priceMode:'indexed',indicators:{sma20:true,sma50:false,sma200:false,bb:false,volume:true,rsi:false,macd:false,stoch:false,obv:false,vwap:false,fib:false,adx:false,ichimoku:false,cci:false,williams:false,roc:false,chop:false,mfi:false,psar:false,kc:false,tsi:false,ema_cloud:false,donchian:false,supertrend:false},alerts:[],portfolio:[]};
 let CFG;
 try{
   const _s=JSON.parse(localStorage.getItem('correlate-cfg')||'{}');
@@ -1141,6 +1143,36 @@ function calcMACD(closes,fast=12,slow=26,signal=9){
   const hist=macd.map((v,i)=>v!=null&&sig[i]!=null?v-sig[i]:null);
   return{macd,signal:sig,histogram:hist};
 }
+function calcDonchianChannels(bars,period=20){
+  const n=bars.length;const upper=new Array(n).fill(null);const lower=new Array(n).fill(null);const mid=new Array(n).fill(null);
+  for(let i=period-1;i<n;i++){
+    const w=bars.slice(i-period+1,i+1);
+    const h=Math.max(...w.map(b=>b.high||b.close));const l=Math.min(...w.map(b=>b.low||b.close));
+    upper[i]=h;lower[i]=l;mid[i]=(h+l)/2;
+  }
+  return{upper,lower,mid};
+}
+
+function calcSupertrend(bars,period=10,mult=3){
+  const n=bars.length;const st=new Array(n).fill(null);const dir=new Array(n).fill(1);
+  const atrArr=calcATR(bars,period);
+  let upperBand=0,lowerBand=0;
+  for(let i=period;i<n;i++){
+    const atr=atrArr[i];if(!atr) continue;
+    const hl2=(bars[i].high+bars[i].low)/2;
+    const newUpper=hl2+mult*atr;const newLower=hl2-mult*atr;
+    if(i===period){upperBand=newUpper;lowerBand=newLower;dir[i]=1;}
+    else{
+      upperBand=newUpper<upperBand||bars[i-1].close>upperBand?newUpper:upperBand;
+      lowerBand=newLower>lowerBand||bars[i-1].close<lowerBand?newLower:lowerBand;
+      if(dir[i-1]===1){dir[i]=bars[i].close<lowerBand?-1:1;}
+      else{dir[i]=bars[i].close>upperBand?1:-1;}
+    }
+    st[i]=dir[i]===1?lowerBand:upperBand;
+  }
+  return{st,dir};
+}
+
 function calcParabolicSAR(bars,iAF=0.02,maxAF=0.2){
   const n=bars.length;const sar=new Array(n).fill(null);
   if(n<3) return sar;
@@ -1681,6 +1713,24 @@ function buildMainChart(){
         datasets.push({label:'Kijun',data:ich.kj.map(v=>v==null?null:+v.toFixed(4)),borderColor:'rgba(59,130,246,0.85)',borderWidth:1.5,pointRadius:0,fill:false,spanGaps:false,tension:0});
         datasets.push({label:'Senkou A',data:ich.sA.map(v=>v==null?null:+v.toFixed(4)),borderColor:'rgba(74,222,128,0.5)',borderWidth:1,fill:'+1',backgroundColor:'rgba(74,222,128,0.06)',pointRadius:0,spanGaps:false,tension:0});
         datasets.push({label:'Senkou B',data:ich.sB.map(v=>v==null?null:+v.toFixed(4)),borderColor:'rgba(248,113,113,0.5)',borderWidth:1,fill:false,backgroundColor:'rgba(248,113,113,0.06)',pointRadius:0,spanGaps:false,tension:0});
+      }
+    }
+    // Donchian Channels
+    if(CFG.indicators.donchian&&priceMode==='price'&&syms.length===1){
+      const sym0=syms[0];const dcBars=getFilteredBars(sym0,tf);
+      if(dcBars.length>=21){
+        const dc=calcDonchianChannels(dcBars);
+        datasets.push({label:'DC Upper',data:dc.upper.map(v=>v==null?null:+v.toFixed(4)),borderColor:'rgba(56,189,248,0.4)',borderWidth:1,fill:false,pointRadius:0,spanGaps:false,tension:0});
+        datasets.push({label:'DC Mid',data:dc.mid.map(v=>v==null?null:+v.toFixed(4)),borderColor:'rgba(56,189,248,0.25)',borderWidth:1,borderDash:[2,2],fill:'-2',backgroundColor:'rgba(56,189,248,0.04)',pointRadius:0,spanGaps:false,tension:0});
+        datasets.push({label:'DC Lower',data:dc.lower.map(v=>v==null?null:+v.toFixed(4)),borderColor:'rgba(56,189,248,0.4)',borderWidth:1,fill:false,pointRadius:0,spanGaps:false,tension:0});
+      }
+    }
+    // SuperTrend
+    if(CFG.indicators.supertrend&&priceMode==='price'&&syms.length===1){
+      const sym0=syms[0];const stBars=getFilteredBars(sym0,tf);
+      if(stBars.length>=12){
+        const{st,dir}=calcSupertrend(stBars);
+        datasets.push({label:'SuperTrend',data:st.map((v,i)=>v==null?null:+v.toFixed(4)),borderColor:'rgba(0,0,0,0)',pointRadius:st.map((v,i)=>v==null?0:3),pointBackgroundColor:st.map((v,i)=>dir[i]===1?'rgba(74,222,128,0.8)':'rgba(248,113,113,0.8)'),showLine:false,fill:false,spanGaps:false});
       }
     }
     // EMA Cloud (9 vs 21)
