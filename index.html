@@ -351,6 +351,17 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       <div id="portfolio-chart-wrap" style="flex:3;min-width:200px;min-height:200px;background:var(--surf);border:1px solid var(--border);border-radius:4px;overflow:hidden;position:relative"><div style="font-size:10px;color:var(--text3);padding:8px 12px;text-transform:uppercase;letter-spacing:0.08em">Value Over Time</div><canvas id="portfolio-chart" style="height:170px !important"></canvas></div>
       <div id="alloc-chart-wrap" style="flex:1;min-width:150px;min-height:200px;background:var(--surf);border:1px solid var(--border);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;align-items:center;padding:8px"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;width:100%;padding-bottom:4px">Allocation</div><canvas id="alloc-chart" style="max-width:150px;max-height:150px"></canvas><div id="alloc-legend" style="width:100%;font-size:10px;margin-top:4px"></div></div>
     </div>
+    <div id="pos-size-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:10px">Position Sizing Calculator</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">Account Size<input id="ps-account" type="number" value="10000" style="background:var(--surf2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 8px;width:110px"></label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">Risk %<input id="ps-risk" type="number" value="1" step="0.1" style="background:var(--surf2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 8px;width:70px"></label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">Symbol<select id="ps-sym" style="background:var(--surf2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 8px"></select></label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">Stop Loss %<input id="ps-stop" type="number" value="2" step="0.1" style="background:var(--surf2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 8px;width:80px"></label>
+        <button class="btn btn-primary" onclick="calcPositionSize()">Calculate</button>
+      </div>
+      <div id="ps-result" style="margin-top:10px;font-size:12px"></div>
+    </div>
     <div id="backtest-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
         <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3)">Strategy Backtest</span>
@@ -954,6 +965,17 @@ function buildOHLCChart(bars){
   for(let i=0;i<=4;i++){const y=pad.t+(i/4)*PH;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+PW,y);ctx.stroke();
     const p=maxP-(i/4)*range;ctx.fillStyle='#64748b';ctx.font='10px JetBrains Mono,monospace';ctx.textAlign='right';
     ctx.fillText('$'+(p>=100?p.toFixed(1):p.toFixed(2)),pad.l-4,y+3);}
+  function detectPattern(bars,i){
+    const b=bars[i],prev=bars[i-1];if(!b||!prev) return null;
+    const bo=b.open||b.close,bh=b.high||b.close,bl=b.low||b.close,bc=b.close;
+    const po=prev.open||prev.close,ph=prev.high||prev.close,pl=prev.low||prev.close,pc=prev.close;
+    const body=Math.abs(bc-bo),range=bh-bl||1;
+    if(body/range<0.1) return{label:'Doji',color:'#fbbf24'};
+    if(bl<Math.min(bo,bc)-body&&body/range<0.4){if(bc>bo) return{label:'Hammer',color:'#4ade80'};if(bc<bo) return{label:'Shoot',color:'#f87171'};}
+    if(po>pc&&bc>po&&bo<pc) return{label:'Bull Eng',color:'#4ade80'};
+    if(po<pc&&bc<po&&bo>pc) return{label:'Bear Eng',color:'#f87171'};
+    return null;
+  }
   bars.forEach((b,i)=>{
     const x=pad.l+(i+0.5)*(PW/bars.length);
     const yH=toY(b.high||b.close),yL=toY(b.low||b.close);
@@ -961,6 +983,8 @@ function buildOHLCChart(bars){
     const color=b.close>=(b.open||b.close)?'#4ade80':'#f87171';
     ctx.strokeStyle=color;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,yH);ctx.lineTo(x,yL);ctx.stroke();
     ctx.fillStyle=color;const bY=Math.min(yO,yC);ctx.fillRect(x-bW/2,bY,bW,Math.max(1,Math.abs(yO-yC)));
+    // Pattern annotation
+    if(bars.length<=80){const pat=detectPattern(bars,i);if(pat&&bW>=4){ctx.fillStyle=pat.color;ctx.font='8px JetBrains Mono,monospace';ctx.textAlign='center';ctx.fillText('●',x,yL+10);}}
   });
   const step=Math.max(1,Math.floor(bars.length/8));
   ctx.fillStyle='#64748b';ctx.font='10px JetBrains Mono,monospace';ctx.textAlign='center';
@@ -1296,7 +1320,10 @@ function calcSymStats(sym){
   const w52Bars=allBars.slice(-252*78); // up to ~1 year of 1D bars
   const hi52=Math.max(...w52Bars.map(b=>b.high||b.close));
   const lo52=Math.min(...w52Bars.map(b=>b.low||b.close));
-  return{vol:vol.toFixed(2),sharpe:sharpe.toFixed(2),maxDD:(maxDD*100).toFixed(2),bars:n,atrPct:atrPct.toFixed(2),hi52:fmtP(hi52),lo52:fmtP(lo52)};
+  // VaR 95% (historical simulation)
+  const sortedR=[...returns].sort((a,b)=>a-b);const varIdx=Math.floor(sortedR.length*0.05);
+  const var95=sortedR[varIdx]??0;const cvar95=varIdx>0?sortedR.slice(0,varIdx).reduce((a,b)=>a+b,0)/varIdx:var95;
+  return{vol:vol.toFixed(2),sharpe:sharpe.toFixed(2),maxDD:(maxDD*100).toFixed(2),bars:n,atrPct:atrPct.toFixed(2),hi52:fmtP(hi52),lo52:fmtP(lo52),var95:(var95*100).toFixed(2),cvar95:(cvar95*100).toFixed(2)};
 }
 function updateStatsRow(){
   const el=document.getElementById('stats-row');if(!el) return;
@@ -1308,6 +1335,8 @@ function updateStatsRow(){
       <div class="sc-row"><span class="sc-lbl">Sharpe</span><span class="sc-val ${sC}">${st.sharpe}</span></div>
       <div class="sc-row"><span class="sc-lbl">Max DD</span><span class="sc-val neg">-${st.maxDD}%</span></div>
       <div class="sc-row"><span class="sc-lbl">ATR%</span><span class="sc-val">${st.atrPct}%</span></div>
+      <div class="sc-row"><span class="sc-lbl">VaR 95%</span><span class="sc-val neg">${st.var95}%</span></div>
+      <div class="sc-row"><span class="sc-lbl">CVaR 95%</span><span class="sc-val neg">${st.cvar95}%</span></div>
       <div class="sc-row"><span class="sc-lbl">52W H</span><span class="sc-val pos">$${st.hi52}</span></div>
       <div class="sc-row"><span class="sc-lbl">52W L</span><span class="sc-val neg">$${st.lo52}</span></div>
     </div>`;
@@ -1513,7 +1542,7 @@ function renderPortfolio(){
     const totalPL=totalVal-totalCost;const totalRet=totalCost?(totalPL/totalCost)*100:0;const cls=totalPL>=0?'pos':'neg';
     summary.innerHTML=[{v:'$'+totalVal.toFixed(2),l:'Total Value'},{v:(totalPL>=0?'+':'')+'$'+Math.abs(totalPL).toFixed(2),l:'Total P&L',cls},{v:(totalRet>=0?'+':'')+totalRet.toFixed(2)+'%',l:'Return',cls},{v:CFG.portfolio.length,l:'Positions'}].map(({v,l,cls})=>`<div class="p-stat"><div class="ps-val ${cls||''}">${v}</div><div class="ps-lbl">${l}</div></div>`).join('');
   }
-  buildPortfolioChart();buildAllocationChart();populateBtSym();
+  buildPortfolioChart();buildAllocationChart();populateBtSym();populatePsSym();
 }
 function buildAllocationChart(){
   dc('alloc');const canvas=document.getElementById('alloc-chart');const legEl=document.getElementById('alloc-legend');
@@ -1533,6 +1562,32 @@ function buildPortfolioChart(){
     return allBars.reduce((sum,{h,bars})=>{const b=bars[i];return sum+(b?b.close*h.shares:0);},0);
   });
   S.charts['portfolio']=new Chart(canvas,{type:'line',data:{labels,datasets:[{label:'Portfolio Value',data:portfolioValues.map(v=>+v.toFixed(2)),borderColor:'#22d3ee',borderWidth:2,pointRadius:0,fill:true,backgroundColor:'rgba(34,211,238,0.05)',tension:0.2}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{backgroundColor:'#0d1520',borderColor:'#1a2535',borderWidth:1,callbacks:{label:ctx=>` Value: $${ctx.parsed.y.toFixed(2)}`}}},scales:{x:{grid:GRID,ticks:{color:'#64748b',maxTicksLimit:10}},y:{grid:GRID,ticks:{color:'#64748b',callback:v=>'$'+v.toFixed(0)}}}}});
+}
+function populatePsSym(){
+  const sel=document.getElementById('ps-sym');if(!sel) return;
+  sel.innerHTML=CFG.symbols.map(s=>`<option value="${s}">${s}</option>`).join('');
+}
+function calcPositionSize(){
+  const account=parseFloat(document.getElementById('ps-account')?.value)||10000;
+  const riskPct=parseFloat(document.getElementById('ps-risk')?.value)||1;
+  const sym=document.getElementById('ps-sym')?.value;
+  const stopPct=parseFloat(document.getElementById('ps-stop')?.value)||2;
+  const resEl=document.getElementById('ps-result');if(!resEl) return;
+  const q=S.data[sym]?.quote;const price=q?.price;
+  if(!price){resEl.innerHTML='<span style="color:var(--warn)">No price data for '+sym+'</span>';return;}
+  const riskAmt=account*(riskPct/100);const stopAmt=price*(stopPct/100);
+  const shares=Math.floor(riskAmt/stopAmt);const posValue=shares*price;const posRisk=shares*stopAmt;
+  const posRiskPct=(posRisk/account*100).toFixed(2);
+  const atr=calcATR(getFilteredBars(sym,CFG.tf),14);const lastATR=atr.filter(v=>v!=null).slice(-1)[0];
+  const atrStop=lastATR?Math.floor(riskAmt/lastATR):null;
+  const cls=shares>0?'pos':'neg';
+  resEl.innerHTML=`<div style="display:flex;gap:16px;flex-wrap:wrap">
+    <div><div style="font-size:10px;color:var(--text3)">Shares (${stopPct}% stop)</div><div class="${cls}" style="font-size:18px;font-weight:700">${shares}</div></div>
+    <div><div style="font-size:10px;color:var(--text3)">Position Value</div><div style="font-size:18px;font-weight:700">$${posValue.toFixed(0)}</div></div>
+    <div><div style="font-size:10px;color:var(--text3)">Risk (${posRiskPct}% acct)</div><div class="neg" style="font-size:18px;font-weight:700">$${posRisk.toFixed(0)}</div></div>
+    ${atrStop?`<div><div style="font-size:10px;color:var(--text3)">ATR-based shares</div><div style="font-size:18px;font-weight:700">${atrStop}</div></div>`:''}
+    <div><div style="font-size:10px;color:var(--text3)">Stop Price</div><div style="font-size:18px;font-weight:700">$${(price*(1-stopPct/100)).toFixed(2)}</div></div>
+  </div>`;
 }
 function populateBtSym(){
   const sel=document.getElementById('bt-sym');if(!sel) return;
@@ -1568,11 +1623,21 @@ function runBacktest(){
   const finalVal=equityCurve[equityCurve.length-1].val;const totalReturn=((finalVal/10000-1)*100).toFixed(2);
   const buyHold=(closes[closes.length-1]/closes[0]-1)*100;
   const cls=parseFloat(totalReturn)>=0?'pos':'neg';const bhCls=buyHold>=0?'pos':'neg';
-  resEl.innerHTML=`<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:8px">
-    <div><div style="font-size:10px;color:var(--text3)">Strategy Return</div><div class="${cls}" style="font-size:16px;font-weight:700">${parseFloat(totalReturn)>=0?'+':''}${totalReturn}%</div></div>
+  // Max drawdown on equity curve
+  let peak=10000,maxDD=0;for(const p of equityCurve){if(p.val>peak) peak=p.val;const dd=(peak-p.val)/peak;if(dd>maxDD) maxDD=dd;}
+  // Sortino: only downside deviation
+  const eqRets=equityCurve.slice(1).map((p,i)=>(p.val/equityCurve[i].val-1)*100);
+  const downRets=eqRets.filter(r=>r<0);const downStd=downRets.length>1?Math.sqrt(downRets.reduce((s,r)=>s+r*r,0)/downRets.length):1;
+  const avgRet=eqRets.reduce((a,b)=>a+b,0)/(eqRets.length||1);const sortino=(avgRet/downStd)*Math.sqrt(252);
+  const alpha=(parseFloat(totalReturn)-buyHold).toFixed(2);
+  resEl.innerHTML=`<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px">
+    <div><div style="font-size:10px;color:var(--text3)">Strategy</div><div class="${cls}" style="font-size:16px;font-weight:700">${parseFloat(totalReturn)>=0?'+':''}${totalReturn}%</div></div>
     <div><div style="font-size:10px;color:var(--text3)">Buy & Hold</div><div class="${bhCls}" style="font-size:16px;font-weight:700">${buyHold>=0?'+':''}${buyHold.toFixed(2)}%</div></div>
+    <div><div style="font-size:10px;color:var(--text3)">Alpha</div><div class="${parseFloat(alpha)>=0?'pos':'neg'}" style="font-size:16px;font-weight:700">${parseFloat(alpha)>=0?'+':''}${alpha}%</div></div>
     <div><div style="font-size:10px;color:var(--text3)">Trades</div><div style="font-size:16px;font-weight:700">${trades}</div></div>
     <div><div style="font-size:10px;color:var(--text3)">Win Rate</div><div style="font-size:16px;font-weight:700">${trades>0?((wins/trades)*100).toFixed(0):0}%</div></div>
+    <div><div style="font-size:10px;color:var(--text3)">Max DD</div><div class="neg" style="font-size:16px;font-weight:700">${(maxDD*100).toFixed(1)}%</div></div>
+    <div><div style="font-size:10px;color:var(--text3)">Sortino</div><div class="${sortino>=1?'pos':sortino<0?'neg':''}" style="font-size:16px;font-weight:700">${sortino.toFixed(2)}</div></div>
   </div>`;
   // Build equity curve chart
   if(chartWrap){
