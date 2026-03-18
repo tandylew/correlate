@@ -990,7 +990,11 @@ function parseYahoo(json){
   const bars=ts.map((t,i)=>({ts:t,open:+(q.open?.[i]??0),high:+(q.high?.[i]??0),low:+(q.low?.[i]??0),close:+(q.close?.[i]??0),volume:+(q.volume?.[i]??0)})).filter(b=>b.close>0);
   const price=bars[bars.length-1]?.close||m.regularMarketPrice||0;
   const pc=m.chartPreviousClose||m.previousClose||price;
-  return{bars,quote:{price,prevClose:pc,change:price-pc,changePct:pc?(price/pc-1)*100:0,high:m.regularMarketDayHigh||price,low:m.regularMarketDayLow||price,volume:m.regularMarketVolume||0}};
+  const shortName=m.shortName||m.longName||'';
+  const exchangeName=m.exchangeName||m.fullExchangeName||'';
+  const currency=m.currency||'USD';
+  const marketCap=m.marketCap||null;
+  return{bars,quote:{price,prevClose:pc,change:price-pc,changePct:pc?(price/pc-1)*100:0,high:m.regularMarketDayHigh||price,low:m.regularMarketDayLow||price,volume:m.regularMarketVolume||0,shortName,exchangeName,currency,marketCap}};
 }
 async function yahooFetch(sym,params){
   const url=`https://query1.finance.yahoo.com/v8/finance/chart/${yahooSym(sym)}?interval=${params.interval}&range=${params.range}`;
@@ -1543,16 +1547,19 @@ function updatePriceCards(){
   grid.innerHTML=syms.map(sym=>{
     const q=S.data[sym]?.quote;const cfg=SYMBOL_CFG[sym]||{color:'#94a3b8',name:sym};
     const bars=S.data[sym]?.bars||[];
-    if(!q||!q.price) return`<div class="price-card" data-sym="${sym}" style="--sym-color:${cfg.color}"><div class="pc-top"><div><div class="pc-sym" style="color:${cfg.color}">${sym}</div><div class="pc-name">${cfg.name||''}</div></div></div><div class="pc-price">—</div></div>`;
+    const displayName=q?.shortName||cfg.name||'';
+    if(!q||!q.price) return`<div class="price-card" data-sym="${sym}" style="--sym-color:${cfg.color}"><div class="pc-top"><div><div class="pc-sym" style="color:${cfg.color}">${sym}</div><div class="pc-name">${displayName}</div></div></div><div class="pc-price">—</div></div>`;
     const cls=q.changePct>=0?'pos':'neg';
     const spark=sparklineSVG(bars,cfg.color);
     const st=calcSymStats(sym);
     const range52=st?`<div class="pc-52w"><div class="pc-52w-bar"><div class="pc-52w-fill" style="width:${st.lo52&&st.hi52&&parseFloat(st.hi52)>parseFloat(st.lo52)?Math.min(100,Math.max(0,((q.price-parseFloat(st.lo52))/(parseFloat(st.hi52)-parseFloat(st.lo52))*100))).toFixed(1):50}%"></div></div><span class="pc-52w-lo">$${st.lo52}</span><span class="pc-52w-hi">$${st.hi52}</span></div>`:'';
+    const mcStr=q.marketCap>1e12?`${(q.marketCap/1e12).toFixed(2)}T`:q.marketCap>1e9?`${(q.marketCap/1e9).toFixed(1)}B`:q.marketCap>1e6?`${(q.marketCap/1e6).toFixed(0)}M`:'';
+    const exStr=q.exchangeName?`<span style="font-size:9px;color:var(--text3);opacity:0.7">${q.exchangeName}</span>`:'';
     const isPrimary=CFG.symbols[0]===sym;
     return`<div class="price-card${isPrimary?' pc-primary':''}" data-sym="${sym}" style="--sym-color:${cfg.color};cursor:pointer" onclick="setPrimarySymbol('${sym}')">
-      <div class="pc-top"><div><div class="pc-sym" style="color:${cfg.color}">${sym}</div><div class="pc-name">${cfg.name||''}</div></div><div class="pc-chg ${cls}">${fmtChg(q.changePct,true)}</div></div>
+      <div class="pc-top"><div><div class="pc-sym" style="color:${cfg.color}">${sym} ${exStr}</div><div class="pc-name" title="${displayName}">${displayName.length>22?displayName.slice(0,20)+'…':displayName}</div></div><div class="pc-chg ${cls}">${fmtChg(q.changePct,true)}</div></div>
       <div class="pc-price ${cls}">$${fmtP(q.price)}</div>
-      <div class="pc-sub"><span>H $${fmtP(q.high||q.price)}</span><span>L $${fmtP(q.low||q.price)}</span><span class="${cls}">${fmtChg(q.change,false)}</span></div>
+      <div class="pc-sub"><span>H $${fmtP(q.high||q.price)}</span><span>L $${fmtP(q.low||q.price)}</span><span class="${cls}">${fmtChg(q.change,false)}</span>${mcStr?`<span title="Market Cap">${mcStr}</span>`:''}</div>
       ${range52}
       ${spark?`<div class="pc-sparkline">${spark}</div>`:''}
     </div>`;
