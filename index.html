@@ -629,6 +629,10 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Lead/Lag Analysis — Which symbol leads?</div>
       <div id="lead-lag-content" style="display:flex;gap:10px;flex-wrap:wrap"></div>
     </div>
+    <div id="autocorr-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Return Autocorrelation — Trend vs Mean-Reversion</div>
+      <div id="autocorr-content" style="display:flex;gap:10px;flex-wrap:wrap"></div>
+    </div>
   </section>
   <section id="tab-portfolio" class="main-tab">
     <div class="p-summary" id="portfolio-summary"></div>
@@ -827,6 +831,10 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
     <div id="position-heatmap-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Portfolio Position Heatmap</div>
       <div id="position-heatmap-grid" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+    </div>
+    <div id="trade-stats-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Trade Journal Statistics</div>
+      <div id="trade-stats-content" style="display:flex;gap:8px;flex-wrap:wrap"></div>
     </div>
   </section>
   <section id="tab-ingest" class="main-tab">
@@ -2120,7 +2128,7 @@ function updateRegimeBar(){
   }
   bar.innerHTML=items.length?items.join('<span style="color:var(--border2);margin:0 2px">|</span>'):'<span style="color:var(--text3);font-size:10px">Loading market data…</span>';
 }
-function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderLinRegPanel();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();renderTradeIdeas();renderTrailingStops();renderSymCompare();renderVolumeSpikes();renderMeanRevScores();renderRegimeDetail();renderCandlePatterns();renderIVRank();renderOrderFlow();renderMarketBreadth();renderReturnCalendar();renderDivergences();renderTrendGauge();renderPriceTargets();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();renderCorrPercentile();renderCointegration();renderLeadLag();}if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();renderPortCorr();renderRebalanceTargets();renderPortfolioQuickStats();renderVolSurface();renderPositionHeatmap();}updateCorrSelectors();updateWatchlistChips();}
+function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderLinRegPanel();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();renderTradeIdeas();renderTrailingStops();renderSymCompare();renderVolumeSpikes();renderMeanRevScores();renderRegimeDetail();renderCandlePatterns();renderIVRank();renderOrderFlow();renderMarketBreadth();renderReturnCalendar();renderDivergences();renderTrendGauge();renderPriceTargets();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();renderCorrPercentile();renderCointegration();renderLeadLag();renderAutocorr();}if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();renderPortCorr();renderRebalanceTargets();renderPortfolioQuickStats();renderVolSurface();renderPositionHeatmap();renderTradeStats();}updateCorrSelectors();updateWatchlistChips();}
 function startPolling(){stopPolling();if(CFG.pollInterval<=0||CFG.source==='demo') return;S.pollTimer=setInterval(()=>fetchAllSymbols(),CFG.pollInterval*1000);}
 function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
 function startDemoTick(){stopDemoTick();S.demoTicker=setInterval(tickDemoData,10000);}
@@ -2129,9 +2137,9 @@ function switchTab(tab){
   S.activeTab=tab;document.querySelectorAll('.main-tab').forEach(el=>el.classList.remove('active'));document.querySelectorAll('.nav-btn').forEach(el=>el.classList.remove('active'));
   const panel=document.getElementById('tab-'+tab);const btn=document.querySelector(`.nav-btn[data-tab="${tab}"]`);
   if(panel) panel.classList.add('active');if(btn) btn.classList.add('active');
-  if(tab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();renderCorrPercentile();renderCointegration();renderLeadLag();if(CFG.source!=='demo'&&Object.keys(yieldCache).length===0) setTimeout(fetchYieldCurve,200);}
+  if(tab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();renderCorrPercentile();renderCointegration();renderLeadLag();renderAutocorr();if(CFG.source!=='demo'&&Object.keys(yieldCache).length===0) setTimeout(fetchYieldCurve,200);}
   if(tab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();renderTradeIdeas();renderTrailingStops();renderSymCompare();renderVolumeSpikes();renderMeanRevScores();renderRegimeDetail();renderCandlePatterns();renderIVRank();renderOrderFlow();renderMarketBreadth();renderReturnCalendar();renderDivergences();renderTrendGauge();renderPriceTargets();}
-  if(tab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();renderPortCorr();renderRebalanceTargets();renderPortfolioQuickStats();renderVolSurface();renderPositionHeatmap();}
+  if(tab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();renderPortCorr();renderRebalanceTargets();renderPortfolioQuickStats();renderVolSurface();renderPositionHeatmap();renderTradeStats();}
 }
 function switchIngest(type){
   document.querySelectorAll('.ingest-panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.ingest-nav-btn').forEach(b=>b.classList.remove('active'));
@@ -4949,6 +4957,73 @@ function calcDCA(){
     {label:'Portfolio Value',data:balances,borderColor:'var(--accent)',borderWidth:2,fill:true,backgroundColor:'rgba(56,189,248,0.08)',pointRadius:0,tension:0.3},
     {label:'Amount Invested',data:contribs,borderColor:'rgba(148,163,184,0.5)',borderWidth:1.5,borderDash:[4,4],fill:false,pointRadius:0,tension:0},
   ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${fmt(ctx.raw)}`}}},scales:{x:{ticks:{font:{size:9}},grid:{color:'rgba(148,163,184,0.07)'}},y:{ticks:{font:{size:9},callback:v=>fmt(v)},grid:{color:'rgba(148,163,184,0.07)'}}}}});
+}
+
+// === TRADE JOURNAL STATISTICS ===
+function renderTradeStats(){
+  const el=document.getElementById('trade-stats-content');if(!el) return;
+  const entries=loadJournal?.()||[];
+  if(!entries.length){el.innerHTML='<span style="font-size:11px;color:var(--text3)">No trade journal entries yet</span>';return;}
+  const closed=entries.filter(e=>e.pnl!=null&&!isNaN(e.pnl));
+  if(!closed.length){el.innerHTML='<span style="font-size:11px;color:var(--text3)">No closed trades with P&L recorded</span>';return;}
+  const pnls=closed.map(e=>parseFloat(e.pnl)||0);
+  const wins=pnls.filter(p=>p>0);const losses=pnls.filter(p=>p<0);
+  const totalPnL=pnls.reduce((s,p)=>s+p,0);
+  const winRate=pnls.length?wins.length/pnls.length*100:0;
+  const avgWin=wins.length?wins.reduce((s,p)=>s+p,0)/wins.length:0;
+  const avgLoss=losses.length?losses.reduce((s,p)=>s+p,0)/losses.length:0;
+  const profitFactor=losses.length&&avgLoss?wins.reduce((s,p)=>s+p,0)/Math.abs(losses.reduce((s,p)=>s+p,0)):Infinity;
+  const maxWin=wins.length?Math.max(...wins):0;const maxLoss=losses.length?Math.min(...losses):0;
+  const expectancy=pnls.length?(totalPnL/pnls.length):0;
+  const streak=pnls.reduce((s,p)=>{if(p>0){s.cur=Math.max(0,s.cur)+1;s.maxW=Math.max(s.maxW,s.cur);}else{s.cur=Math.min(0,s.cur)-1;s.maxL=Math.max(s.maxL,-s.cur);}return s;},{cur:0,maxW:0,maxL:0});
+  const stats=[
+    {label:'Total Trades',val:pnls.length+'',cls:''},
+    {label:'Win Rate',val:winRate.toFixed(1)+'%',cls:winRate>=50?'pos':'neg'},
+    {label:'Total P&L',val:(totalPnL>=0?'+':'')+totalPnL.toFixed(2),cls:totalPnL>=0?'pos':'neg'},
+    {label:'Avg Win',val:avgWin?'+$'+avgWin.toFixed(2):'—',cls:'pos'},
+    {label:'Avg Loss',val:avgLoss?'$'+avgLoss.toFixed(2):'—',cls:'neg'},
+    {label:'Profit Factor',val:isFinite(profitFactor)?profitFactor.toFixed(2):'∞',cls:profitFactor>=1.5?'pos':profitFactor>=1?'warn':'neg'},
+    {label:'Expectancy/trade',val:(expectancy>=0?'+':'')+expectancy.toFixed(2),cls:expectancy>=0?'pos':'neg'},
+    {label:'Best Trade',val:maxWin?'+$'+maxWin.toFixed(2):'—',cls:'pos'},
+    {label:'Worst Trade',val:maxLoss?'$'+maxLoss.toFixed(2):'—',cls:'neg'},
+    {label:'Max Win Streak',val:streak.maxW+'',cls:'pos'},
+    {label:'Max Loss Streak',val:streak.maxL+'',cls:'neg'},
+  ];
+  el.innerHTML=stats.map(s=>`
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;min-width:100px">
+      <div style="font-size:9px;color:var(--text3)">${s.label}</div>
+      <div style="font-size:14px;font-weight:700" class="${s.cls}">${s.val}</div>
+    </div>
+  `).join('');
+}
+
+// === AUTOCORRELATION ANALYSIS ===
+function renderAutocorr(){
+  const el=document.getElementById('autocorr-content');if(!el) return;
+  const syms=[S.corrA||CFG.symbols[0],S.corrB||CFG.symbols[1]].filter(Boolean);
+  if(!syms.length){el.innerHTML='<span style="font-size:11px;color:var(--text3)">No symbols</span>';return;}
+  const maxLag=10;
+  el.innerHTML=syms.map(sym=>{
+    const bars=getFilteredBars(sym,CFG.tf);if(bars.length<maxLag+5) return`<span style="color:var(--text3)">${sym}: need more data</span>`;
+    const returns=pctReturns(bars.map(b=>b.close)).filter(v=>!isNaN(v));
+    const n=returns.length;const mean=returns.reduce((s,v)=>s+v,0)/n;
+    const variance=returns.reduce((s,v)=>s+(v-mean)**2,0)/n;
+    const acfs=[];
+    for(let lag=1;lag<=Math.min(maxLag,n-1);lag++){
+      let cov=0;for(let i=lag;i<n;i++) cov+=(returns[i]-mean)*(returns[i-lag]-mean);
+      acfs.push({lag,acf:variance?cov/((n-lag)*variance):0});
+    }
+    const lag1=acfs[0]?.acf||0;const sumAcf=acfs.reduce((s,a)=>s+Math.abs(a.acf),0);
+    const regime=lag1>0.1?'Trending':lag1<-0.1?'Mean-Reverting':'Random Walk';
+    const regCol=lag1>0.1?'var(--pos)':lag1<-0.1?'var(--warn)':'var(--text2)';
+    return`<div style="background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:8px 12px;min-width:200px">
+      <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px">${sym}</div>
+      <div style="font-size:13px;font-weight:700;color:${regCol}">${regime}</div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Lag-1 ACF: ${lag1.toFixed(3)}</div>
+      <div style="display:flex;align-items:flex-end;gap:2px;height:24px">${acfs.map(a=>{const h=Math.abs(a.acf)*24/0.3;const col=a.acf>0?'var(--pos)':'var(--neg)';return`<div title="Lag ${a.lag}: ${a.acf.toFixed(3)}" style="flex:1;height:${Math.max(2,Math.min(24,h))}px;background:${col};border-radius:2px;opacity:0.8"></div>`}).join('')}</div>
+      <div style="font-size:9px;color:var(--text3);margin-top:3px">ACF(1..${maxLag})</div>
+    </div>`;
+  }).join('');
 }
 
 // === VOLATILITY TERM STRUCTURE ===
