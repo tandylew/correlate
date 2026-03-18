@@ -338,6 +338,20 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       <div id="portfolio-chart-wrap" style="flex:3;min-width:200px;min-height:200px;background:var(--surf);border:1px solid var(--border);border-radius:4px;overflow:hidden;position:relative"><div style="font-size:10px;color:var(--text3);padding:8px 12px;text-transform:uppercase;letter-spacing:0.08em">Value Over Time</div><canvas id="portfolio-chart" style="height:170px !important"></canvas></div>
       <div id="alloc-chart-wrap" style="flex:1;min-width:150px;min-height:200px;background:var(--surf);border:1px solid var(--border);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;align-items:center;padding:8px"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;width:100%;padding-bottom:4px">Allocation</div><canvas id="alloc-chart" style="max-width:150px;max-height:150px"></canvas><div id="alloc-legend" style="width:100%;font-size:10px;margin-top:4px"></div></div>
     </div>
+    <div id="backtest-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+        <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3)">Strategy Backtest</span>
+        <select id="bt-sym" style="background:var(--surf2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 8px"></select>
+        <select id="bt-strategy" style="background:var(--surf2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 8px">
+          <option value="sma-cross">SMA Cross (20/50)</option>
+          <option value="rsi-mean">RSI Mean Reversion</option>
+          <option value="macd-signal">MACD Signal</option>
+        </select>
+        <button class="btn btn-primary" onclick="runBacktest()">Run</button>
+      </div>
+      <div id="bt-results" style="font-size:11px;color:var(--text2)">Select a symbol and strategy, then click Run.</div>
+      <div id="bt-chart-wrap" style="height:120px;position:relative;display:none"><canvas id="bt-chart"></canvas></div>
+    </div>
   </section>
   <section id="tab-ingest" class="main-tab">
     <div id="ingest-nav">
@@ -402,6 +416,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       <div class="radio-group">
         <label><input type="radio" name="src" value="demo"> Demo — simulated data, no auth needed</label>
         <label><input type="radio" name="src" value="yahoo"> Yahoo Finance — delayed quotes (auto CORS proxy)</label>
+        <label><input type="radio" name="src" value="alphavantage"> Alpha Vantage — daily data (free API key)</label>
         <label><input type="radio" name="src" value="robinhood"> Robinhood — real-time (bearer token required)</label>
       </div>
     </section>
@@ -414,6 +429,11 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
         <button class="btn" data-proxy="">None</button>
       </div>
       <small>Prepended to every API URL. Required for Yahoo Finance (browser CORS). Falls back to allorigins.win automatically if primary fails.</small>
+    </section>
+    <section class="settings-section" id="av-cfg" hidden>
+      <h3>Alpha Vantage API Key</h3>
+      <input id="cfg-av-key" placeholder="Free key at alphavantage.co" style="width:100%;background:var(--surf2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:6px 10px;margin-bottom:4px">
+      <small>Free tier: 25 requests/day, daily data only. Get key at <a href="https://www.alphavantage.co/support/#api-key" target="_blank" style="color:var(--accent)">alphavantage.co</a>.</small>
     </section>
     <section class="settings-section" id="rbh-cfg" hidden>
       <h3>Robinhood Bearer Token</h3>
@@ -485,7 +505,7 @@ const SYMBOL_CFG={
 const YAHOO_RANGES={'1D':{interval:'5m',range:'1d'},'1W':{interval:'1h',range:'5d'},'1M':{interval:'1d',range:'1mo'},'3M':{interval:'1d',range:'3mo'},'YTD':{interval:'1d',range:'ytd'},'1Y':{interval:'1d',range:'1y'}};
 const RBH_RANGES={'1D':{interval:'5minute',span:'day'},'1W':{interval:'10minute',span:'week'},'1M':{interval:'day',span:'month'},'3M':{interval:'day',span:'3month'},'YTD':{interval:'day',span:'year'},'1Y':{interval:'day',span:'year'}};
 const CFG_VER=3;
-const CFG_DEF={_v:CFG_VER,source:'yahoo',corsProxy:'https://corsproxy.io/?',rbhToken:'',pollInterval:60,symbols:['SPY','USO','VIX'],tf:'1D',chartType:'line',priceMode:'indexed',indicators:{sma20:true,sma50:false,bb:false,volume:true,rsi:false,macd:false,stoch:false,obv:false,vwap:false},alerts:[],portfolio:[]};
+const CFG_DEF={_v:CFG_VER,source:'yahoo',corsProxy:'https://corsproxy.io/?',rbhToken:'',avKey:'',pollInterval:60,symbols:['SPY','USO','VIX'],tf:'1D',chartType:'line',priceMode:'indexed',indicators:{sma20:true,sma50:false,bb:false,volume:true,rsi:false,macd:false,stoch:false,obv:false,vwap:false},alerts:[],portfolio:[]};
 let CFG;
 try{
   const _s=JSON.parse(localStorage.getItem('correlate-cfg')||'{}');
@@ -713,12 +733,25 @@ async function fetchSectorData(){
   }
   renderSectorHeatmap();
 }
+async function avFetch(sym){
+  if(!CFG.avKey) throw new Error('Alpha Vantage API key not set in Settings');
+  // VIX not supported in AV, fall back to Yahoo
+  if(sym==='VIX') return yahooFetch(sym,YAHOO_RANGES[CFG.tf]||YAHOO_RANGES['1D']);
+  const url=`https://www.alphavantage.co/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol=${sym}&apikey=${CFG.avKey}&outputsize=compact&datatype=json`;
+  const res=await fetchWithProxy(url);if(!res.ok) throw new Error(`AV ${res.status}`);
+  const json=await res.json();
+  if(json['Note']||json['Information']) throw new Error(json['Note']||json['Information']);
+  const ts=json['Time Series (Daily)'];if(!ts) throw new Error('Invalid AV response');
+  const bars=Object.entries(ts).map(([date,v])=>({ts:Math.floor(new Date(date)/1000),open:+v['1. open'],high:+v['2. high'],low:+v['3. low'],close:+v['5. adjusted close'],volume:+v['6. volume']})).sort((a,b)=>a.ts-b.ts);
+  const price=bars[bars.length-1]?.close||0;const pc=bars[bars.length-2]?.close||price;
+  return{bars,quote:{price,prevClose:pc,change:price-pc,changePct:pc?(price/pc-1)*100:0,high:bars[bars.length-1].high,low:bars[bars.length-1].low,volume:bars[bars.length-1].volume}};
+}
 async function fetchAllSymbols(tf){
   if(CFG.source==='demo'){tickDemoData();return;}
   setStatus('fetching');
   const tfKey=tf||CFG.tf||'1D';
   const yP=YAHOO_RANGES[tfKey]||YAHOO_RANGES['1D'];const rP=RBH_RANGES[tfKey]||RBH_RANGES['1D'];
-  const fn=CFG.source==='robinhood'?s=>rbhFetch(s,rP):s=>yahooFetch(s,yP);
+  const fn=CFG.source==='robinhood'?s=>rbhFetch(s,rP):CFG.source==='alphavantage'?s=>avFetch(s):s=>yahooFetch(s,yP);
   const results=await Promise.allSettled(CFG.symbols.map(async sym=>{
     const d=await fn(sym);
     if(S.data[sym]?.bars?.length){const ex=new Map(S.data[sym].bars.map(b=>[b.ts,b]));d.bars.forEach(b=>ex.set(b.ts,b));d.bars=[...ex.values()].sort((a,b)=>a.ts-b.ts);}
@@ -1186,18 +1219,19 @@ function openSettings(){
   document.querySelectorAll('input[name="src"]').forEach(r=>r.checked=r.value===CFG.source);
   const pe=document.getElementById('cfg-proxy');if(pe) pe.value=CFG.corsProxy;
   const te=document.getElementById('cfg-rbh-token');if(te) te.value=CFG.rbhToken;
+  const ave=document.getElementById('cfg-av-key');if(ave) ave.value=CFG.avKey||'';
   document.querySelectorAll('input[name="poll"]').forEach(r=>r.checked=r.value===String(CFG.pollInterval));
   const sl=document.getElementById('cfg-symbols');
   if(sl) sl.innerHTML=CFG.symbols.map(sym=>`<div class="cfg-sym-row"><span class="cfg-sym-name" style="color:${SYMBOL_CFG[sym]?.color||'#94a3b8'}">${sym}</span><button class="cfg-sym-remove" onclick="removeSymbol('${sym}')">×</button></div>`).join('');
   toggleSrc(CFG.source);renderAlerts();d.showModal();
 }
 function closeSettings(){document.getElementById('settings-dialog')?.close();}
-function toggleSrc(src){const y=document.getElementById('yahoo-cfg');const r=document.getElementById('rbh-cfg');if(y) y.hidden=src!=='yahoo';if(r) r.hidden=src!=='robinhood';}
+function toggleSrc(src){const y=document.getElementById('yahoo-cfg');const r=document.getElementById('rbh-cfg');const av=document.getElementById('av-cfg');if(y) y.hidden=src==='robinhood'||src==='demo';if(r) r.hidden=src!=='robinhood';if(av) av.hidden=src!=='alphavantage';}
 function saveSettings(){
   const srcEl=document.querySelector('input[name="src"]:checked');
   const pe=document.getElementById('cfg-proxy');const te=document.getElementById('cfg-rbh-token');const pollEl=document.querySelector('input[name="poll"]:checked');
   const newSym=document.getElementById('cfg-new-sym')?.value?.trim()?.toUpperCase();
-  if(srcEl) CFG.source=srcEl.value;if(pe) CFG.corsProxy=pe.value.trim();if(te) CFG.rbhToken=te.value.trim();if(pollEl) CFG.pollInterval=parseInt(pollEl.value);
+  if(srcEl) CFG.source=srcEl.value;if(pe) CFG.corsProxy=pe.value.trim();if(te) CFG.rbhToken=te.value.trim();if(pollEl) CFG.pollInterval=parseInt(pollEl.value);const ave=document.getElementById('cfg-av-key');if(ave) CFG.avKey=ave.value.trim();
   if(newSym&&!CFG.symbols.includes(newSym)){CFG.symbols.push(newSym);if(!SYMBOL_CFG[newSym]){const c=['#a78bfa','#4ade80','#f97316','#e879f9'];SYMBOL_CFG[newSym]={name:newSym,color:c[CFG.symbols.length%c.length],vol:0.001,seed:newSym.charCodeAt(0)};}}
   saveCfg();closeSettings();stopPolling();stopDemoTick();renderSymbolChips();updateCorrSelectors();
   if(CFG.source==='demo'){initDemoData();updateUI();startDemoTick();}else{initDemoData();updateUI();fetchAllSymbols(CFG.tf).then(()=>startPolling());}
@@ -1397,7 +1431,7 @@ function renderPortfolio(){
     const totalPL=totalVal-totalCost;const totalRet=totalCost?(totalPL/totalCost)*100:0;const cls=totalPL>=0?'pos':'neg';
     summary.innerHTML=[{v:'$'+totalVal.toFixed(2),l:'Total Value'},{v:(totalPL>=0?'+':'')+'$'+Math.abs(totalPL).toFixed(2),l:'Total P&L',cls},{v:(totalRet>=0?'+':'')+totalRet.toFixed(2)+'%',l:'Return',cls},{v:CFG.portfolio.length,l:'Positions'}].map(({v,l,cls})=>`<div class="p-stat"><div class="ps-val ${cls||''}">${v}</div><div class="ps-lbl">${l}</div></div>`).join('');
   }
-  buildPortfolioChart();buildAllocationChart();
+  buildPortfolioChart();buildAllocationChart();populateBtSym();
 }
 function buildAllocationChart(){
   dc('alloc');const canvas=document.getElementById('alloc-chart');const legEl=document.getElementById('alloc-legend');
@@ -1417,6 +1451,54 @@ function buildPortfolioChart(){
     return allBars.reduce((sum,{h,bars})=>{const b=bars[i];return sum+(b?b.close*h.shares:0);},0);
   });
   S.charts['portfolio']=new Chart(canvas,{type:'line',data:{labels,datasets:[{label:'Portfolio Value',data:portfolioValues.map(v=>+v.toFixed(2)),borderColor:'#22d3ee',borderWidth:2,pointRadius:0,fill:true,backgroundColor:'rgba(34,211,238,0.05)',tension:0.2}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{backgroundColor:'#0d1520',borderColor:'#1a2535',borderWidth:1,callbacks:{label:ctx=>` Value: $${ctx.parsed.y.toFixed(2)}`}}},scales:{x:{grid:GRID,ticks:{color:'#64748b',maxTicksLimit:10}},y:{grid:GRID,ticks:{color:'#64748b',callback:v=>'$'+v.toFixed(0)}}}}});
+}
+function populateBtSym(){
+  const sel=document.getElementById('bt-sym');if(!sel) return;
+  sel.innerHTML=CFG.symbols.map(s=>`<option value="${s}">${s}</option>`).join('');
+}
+function runBacktest(){
+  const sym=document.getElementById('bt-sym')?.value;const strat=document.getElementById('bt-strategy')?.value;
+  const resEl=document.getElementById('bt-results');const chartWrap=document.getElementById('bt-chart-wrap');
+  if(!sym||!strat||!resEl) return;
+  const bars=getFilteredBars(sym,CFG.tf);if(bars.length<60){resEl.innerHTML='<span style="color:var(--warn)">Need at least 60 bars. Try a longer timeframe.</span>';return;}
+  const closes=bars.map(b=>b.close);let position=0;let cash=10000;let equity=10000;const equityCurve=[{ts:bars[0].ts,val:10000}];let trades=0;let wins=0;let entryPrice=0;
+  // Generate signals
+  const signals=closes.map((_,i)=>{
+    if(strat==='sma-cross'){
+      const s20=i>=19?closes.slice(i-19,i+1).reduce((a,b)=>a+b,0)/20:null;
+      const s50=i>=49?closes.slice(i-49,i+1).reduce((a,b)=>a+b,0)/50:null;
+      if(!s20||!s50) return 0;return s20>s50?1:-1;
+    }else if(strat==='rsi-mean'){
+      const r=calcRSI(closes.slice(0,i+1),14);const rv=r[r.length-1];
+      if(rv==null) return 0;return rv<35?1:rv>65?-1:0;
+    }else if(strat==='macd-signal'){
+      const {macd,signal}=calcMACD(closes.slice(0,i+1));
+      const mv=macd[macd.length-1],sv=signal[signal.length-1];
+      if(mv==null||sv==null) return 0;return mv>sv?1:-1;
+    }return 0;
+  });
+  for(let i=1;i<bars.length;i++){
+    const sig=signals[i-1];const price=closes[i];
+    if(sig===1&&position===0){position=Math.floor(cash/price);cash-=position*price;entryPrice=price;}
+    else if(sig===-1&&position>0){const proceeds=position*price;const pl=proceeds-position*entryPrice;if(pl>0) wins++;trades++;cash+=proceeds;equity=cash;position=0;}
+    equityCurve.push({ts:bars[i].ts,val:+(cash+position*price).toFixed(2)});
+  }
+  const finalVal=equityCurve[equityCurve.length-1].val;const totalReturn=((finalVal/10000-1)*100).toFixed(2);
+  const buyHold=(closes[closes.length-1]/closes[0]-1)*100;
+  const cls=parseFloat(totalReturn)>=0?'pos':'neg';const bhCls=buyHold>=0?'pos':'neg';
+  resEl.innerHTML=`<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:8px">
+    <div><div style="font-size:10px;color:var(--text3)">Strategy Return</div><div class="${cls}" style="font-size:16px;font-weight:700">${parseFloat(totalReturn)>=0?'+':''}${totalReturn}%</div></div>
+    <div><div style="font-size:10px;color:var(--text3)">Buy & Hold</div><div class="${bhCls}" style="font-size:16px;font-weight:700">${buyHold>=0?'+':''}${buyHold.toFixed(2)}%</div></div>
+    <div><div style="font-size:10px;color:var(--text3)">Trades</div><div style="font-size:16px;font-weight:700">${trades}</div></div>
+    <div><div style="font-size:10px;color:var(--text3)">Win Rate</div><div style="font-size:16px;font-weight:700">${trades>0?((wins/trades)*100).toFixed(0):0}%</div></div>
+  </div>`;
+  // Build equity curve chart
+  if(chartWrap){
+    chartWrap.style.display='block';dc('bt');const canvas=document.getElementById('bt-chart');if(!canvas) return;
+    const labels=equityCurve.map(p=>{const d=new Date(p.ts*1000);return d.toLocaleDateString('en-US',{month:'numeric',day:'numeric'});});
+    const holdVals=equityCurve.map((p,i)=>(closes[i]/closes[0]*10000).toFixed(2));
+    S.charts['bt']=new Chart(canvas,{type:'line',data:{labels,datasets:[{label:'Strategy',data:equityCurve.map(p=>p.val),borderColor:'#22d3ee',borderWidth:1.5,pointRadius:0,fill:false,tension:0.1},{label:'Buy&Hold',data:holdVals,borderColor:'#94a3b8',borderWidth:1,borderDash:[4,2],pointRadius:0,fill:false,tension:0.1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{color:'#64748b',font:{size:10},boxWidth:12}},tooltip:{backgroundColor:'#0d1520',borderColor:'#1a2535',borderWidth:1,callbacks:{label:ctx=>` ${ctx.dataset.label}: $${(+ctx.parsed.y).toFixed(0)}`}}},scales:{x:{display:false,grid:{display:false}},y:{grid:{color:'#0d1726'},ticks:{color:'#64748b',maxTicksLimit:3,callback:v=>'$'+Math.round(v)}}}}});
+  }
 }
 function addHolding(){
   const sym=document.getElementById('p-sym')?.value?.trim()?.toUpperCase();
