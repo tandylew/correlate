@@ -338,6 +338,10 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
     <div id="stoch-wrap" style="height:68px;position:relative;display:none"><canvas id="stoch-chart"></canvas></div>
     <div id="obv-wrap" style="height:68px;position:relative;display:none"><canvas id="obv-chart"></canvas></div>
     <div id="adx-wrap" style="height:80px;position:relative;display:none"><canvas id="adx-chart"></canvas></div>
+    <div id="sr-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Support & Resistance — <span id="sr-sym-label"></span></div>
+      <div id="sr-levels"></div>
+    </div>
     <div id="perf-table-wrap" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;overflow-x:auto">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);padding:8px 12px">Performance vs Timeframe</div>
       <table id="perf-table" class="portfolio-table" style="min-width:500px"><thead><tr><th>Symbol</th><th>Today</th><th>1W</th><th>1M</th><th>3M</th><th>YTD</th><th>Trend</th></tr></thead><tbody id="perf-tbody"></tbody></table>
@@ -1473,7 +1477,7 @@ function updateRegimeBar(){
   }
   bar.innerHTML=items.length?items.join('<span style="color:var(--border2);margin:0 2px">|</span>'):'<span style="color:var(--text3);font-size:10px">Loading market data…</span>';
 }
-function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();renderOpexBar();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate') updateCorrStats();if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();}updateCorrSelectors();updateWatchlistChips();}
+function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate') updateCorrStats();if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();}updateCorrSelectors();updateWatchlistChips();}
 function startPolling(){stopPolling();if(CFG.pollInterval<=0||CFG.source==='demo') return;S.pollTimer=setInterval(()=>fetchAllSymbols(),CFG.pollInterval*1000);}
 function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
 function startDemoTick(){stopDemoTick();S.demoTicker=setInterval(tickDemoData,10000);}
@@ -2357,6 +2361,58 @@ function renderRSRanking(){
         <div style="width:${barW}%;height:100%;background:${barColor};border-radius:2px;${rs<0?'margin-left:auto':''}"></div>
       </div>
       <div style="font-size:9px;color:var(--text3)">vs SPY ${spyRet>=0?'+':''}${spyRet.toFixed(2)}%</div>
+    </div>`;
+  }).join('');
+}
+// === SUPPORT & RESISTANCE DETECTION ===
+function calcSRLevels(bars,numLevels=5,tolerance=0.005){
+  // Detect S/R by finding price levels with highest density of highs and lows
+  if(!bars||bars.length<20) return[];
+  const pivots=[];
+  for(let i=2;i<bars.length-2;i++){
+    const h=bars[i].high||bars[i].close,l=bars[i].low||bars[i].close;
+    const isSwingHigh=h>=(bars[i-1].high||bars[i-1].close)&&h>=(bars[i-2].high||bars[i-2].close)&&h>=(bars[i+1].high||bars[i+1].close)&&h>=(bars[i+2].high||bars[i+2].close);
+    const isSwingLow=l<=(bars[i-1].low||bars[i-1].close)&&l<=(bars[i-2].low||bars[i-2].close)&&l<=(bars[i+1].low||bars[i+1].close)&&l<=(bars[i+2].low||bars[i+2].close);
+    if(isSwingHigh) pivots.push({price:h,type:'R'});
+    if(isSwingLow) pivots.push({price:l,type:'S'});
+  }
+  // Cluster nearby pivots
+  const clusters=[];
+  pivots.forEach(p=>{
+    const nearby=clusters.find(c=>Math.abs(c.price-p.price)/c.price<tolerance);
+    if(nearby){nearby.count++;nearby.price=(nearby.price*(nearby.count-1)+p.price)/nearby.count;if(p.type==='R') nearby.rCount=(nearby.rCount||0)+1;else nearby.sCount=(nearby.sCount||0)+1;}
+    else clusters.push({price:p.price,count:1,rCount:p.type==='R'?1:0,sCount:p.type==='S'?1:0});
+  });
+  clusters.sort((a,b)=>b.count-a.count);
+  const currentPrice=bars[bars.length-1]?.close||0;
+  return clusters.slice(0,numLevels*3).map(c=>({
+    price:c.price,
+    count:c.count,
+    type:c.price>currentPrice?'R':'S',
+    strength:c.count>=4?'Strong':c.count>=2?'Moderate':'Weak'
+  })).sort((a,b)=>a.price-b.price);
+}
+function renderSRPanel(){
+  const el=document.getElementById('sr-levels');if(!el) return;
+  const sym=CFG.symbols[0];if(!sym) return;
+  const bars=S.data[sym]?.bars;
+  if(!bars||bars.length<20){el.innerHTML='<span style="color:var(--text3)">No data</span>';return;}
+  const currentPrice=bars[bars.length-1]?.close||0;
+  const q=S.data[sym]?.quote;const filteredBars=getFilteredBars(sym,CFG.tf);
+  const levels=calcSRLevels(filteredBars,6);
+  if(!levels.length){el.innerHTML='<span style="color:var(--text3)">Not enough data for S/R detection</span>';return;}
+  const symLbl=document.getElementById('sr-sym-label');if(symLbl) symLbl.textContent=sym;
+  el.innerHTML=levels.map(l=>{
+    const dist=((l.price/currentPrice-1)*100).toFixed(2);
+    const distSign=l.type==='R'?'+':'-';
+    const cls=l.type==='R'?'neg':'pos';
+    const strengthColor=l.strength==='Strong'?'var(--warn)':l.strength==='Moderate'?'var(--accent)':'var(--text3)';
+    return`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:10px;font-weight:700;min-width:20px;color:${l.type==='R'?'var(--neg)':'var(--pos)'}">${l.type}</span>
+      <span style="font-weight:700;font-variant-numeric:tabular-nums">$${l.price.toFixed(2)}</span>
+      <span class="${cls}" style="font-size:10px">${distSign}${Math.abs(parseFloat(dist))}%</span>
+      <div style="flex:1;height:2px;background:var(--border);border-radius:1px;overflow:hidden"><div style="width:${Math.min(100,l.count/6*100)}%;height:100%;background:${strengthColor}"></div></div>
+      <span style="font-size:9px;color:${strengthColor};min-width:55px">${l.strength} (${l.count}x)</span>
     </div>`;
   }).join('');
 }
