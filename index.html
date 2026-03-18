@@ -429,6 +429,14 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Volume Spike Detector — <span id="vol-spike-sym"></span></div>
       <div id="vol-spike-list" style="display:flex;flex-direction:column;gap:4px;max-height:140px;overflow-y:auto"></div>
     </div>
+    <div id="mean-rev-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Mean Reversion Scores</div>
+      <div id="mean-rev-grid" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
+    <div id="regime-detail-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Market Regime Analysis</div>
+      <div id="regime-detail-grid" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
   </section>
   <section id="tab-correlate" class="main-tab">
     <div id="corr-header">
@@ -1771,7 +1779,7 @@ function updateRegimeBar(){
   }
   bar.innerHTML=items.length?items.join('<span style="color:var(--border2);margin:0 2px">|</span>'):'<span style="color:var(--text3);font-size:10px">Loading market data…</span>';
 }
-function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderLinRegPanel();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();renderTradeIdeas();renderTrailingStops();renderSymCompare();renderVolumeSpikes();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();}if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();renderPortCorr();renderRebalanceTargets();}updateCorrSelectors();updateWatchlistChips();}
+function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderLinRegPanel();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();renderTradeIdeas();renderTrailingStops();renderSymCompare();renderVolumeSpikes();renderMeanRevScores();renderRegimeDetail();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();}if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();renderPortCorr();renderRebalanceTargets();}updateCorrSelectors();updateWatchlistChips();}
 function startPolling(){stopPolling();if(CFG.pollInterval<=0||CFG.source==='demo') return;S.pollTimer=setInterval(()=>fetchAllSymbols(),CFG.pollInterval*1000);}
 function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
 function startDemoTick(){stopDemoTick();S.demoTicker=setInterval(tickDemoData,10000);}
@@ -1781,7 +1789,7 @@ function switchTab(tab){
   const panel=document.getElementById('tab-'+tab);const btn=document.querySelector(`.nav-btn[data-tab="${tab}"]`);
   if(panel) panel.classList.add('active');if(btn) btn.classList.add('active');
   if(tab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();if(CFG.source!=='demo'&&Object.keys(yieldCache).length===0) setTimeout(fetchYieldCurve,200);}
-  if(tab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();renderTradeIdeas();renderTrailingStops();renderSymCompare();renderVolumeSpikes();}
+  if(tab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();renderTradeIdeas();renderTrailingStops();renderSymCompare();renderVolumeSpikes();renderMeanRevScores();renderRegimeDetail();}
   if(tab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();renderPortCorr();renderRebalanceTargets();}
 }
 function switchIngest(type){
@@ -3279,6 +3287,72 @@ function renderTrailingStops(){
       <div style="font-size:11px;font-weight:700;color:${color};margin-bottom:6px">${sym} <span style="font-weight:400;color:var(--text3)">ATR(14): $${atrLast.toFixed(3)}</span></div>
       ${stopRows}
       <div style="margin-top:4px;font-size:10px;color:var(--text3)">Current: $${cur.toFixed(2)}</div>
+    </div>`;
+  }).join('');
+}
+
+// === MEAN REVERSION SCORES ===
+function renderMeanRevScores(){
+  const el=document.getElementById('mean-rev-grid');if(!el) return;
+  const syms=CFG.symbols;if(!syms.length) return;
+  el.innerHTML=syms.map(sym=>{
+    const bars=getFilteredBars(sym,CFG.tf);if(bars.length<21) return'';
+    const closes=bars.map(b=>b.close);const last=closes[closes.length-1];
+    const sma20=calcSMA(closes,20);const s20=sma20[sma20.length-1];
+    const rets=pctReturns(closes.slice(-20)).filter(v=>!isNaN(v));
+    const std=rets.length>1?Math.sqrt(rets.reduce((s,v)=>s+(v-rets.reduce((a,b)=>a+b,0)/rets.length)**2,0)/rets.length)*Math.sqrt(252)*100:1;
+    // Z-score of price vs SMA20
+    const priceStd=closes.slice(-20).reduce((s,v)=>s+(v-s20)**2,0)/20;const priceSig=Math.sqrt(priceStd)||1;
+    const z=(last-s20)/priceSig;
+    // RSI
+    const rsiArr=calcRSI(closes);const rsi=rsiArr[rsiArr.length-1]||50;
+    // CCI
+    const cciArr=calcCCI(bars);const cci=cciArr[cciArr.length-1]||0;
+    const mrScore=-(z*0.4+(rsi-50)/50*0.3+(cci/100)*0.3);// negative z = undervalued = +score
+    const color=SYMBOL_CFG[sym]?.color||'#94a3b8';
+    const scoreColor=mrScore>0.5?'var(--pos)':mrScore<-0.5?'var(--neg)':'var(--text)';
+    const scoreLabel=mrScore>1?'Strong Oversold':mrScore>0.5?'Mild Oversold':mrScore<-1?'Strong Overbought':mrScore<-0.5?'Mild Overbought':'Near Fair';
+    return`<div style="background:var(--surf2);border:1px solid var(--border);border-radius:4px;padding:8px 10px;min-width:140px">
+      <div style="font-size:11px;font-weight:700;color:${color};margin-bottom:6px">${sym}</div>
+      <div style="font-size:18px;font-weight:700;color:${scoreColor};margin-bottom:4px">${mrScore>0?'+':''}${mrScore.toFixed(2)}</div>
+      <div style="font-size:10px;color:${scoreColor}">${scoreLabel}</div>
+      <div style="font-size:10px;color:var(--text3);margin-top:4px">Z: ${z.toFixed(2)} | RSI: ${rsi?.toFixed(0)} | CCI: ${cci?.toFixed(0)}</div>
+    </div>`;
+  }).join('');
+}
+
+// === REGIME DETECTION ===
+function renderRegimeDetail(){
+  const el=document.getElementById('regime-detail-grid');if(!el) return;
+  const syms=CFG.symbols;if(!syms.length) return;
+  el.innerHTML=syms.map(sym=>{
+    const bars=getFilteredBars(sym,CFG.tf);if(bars.length<50) return'';
+    const closes=bars.map(b=>b.close);const n=closes.length;
+    const last=closes[n-1];
+    const sma20v=calcSMA(closes,20);const sma20=sma20v[n-1];
+    const sma50v=calcSMA(closes,50);const sma50=sma50v[n-1];
+    const sma200v=closes.length>=200?calcSMA(closes,200):null;const sma200=sma200v?sma200v[n-1]:null;
+    // ADX for trend strength
+    const adxArr=calcADX(bars);const lastADX=adxArr[n-1];
+    const adxVal=lastADX?.adx||0;
+    // Volatility regime: compare recent 10-bar vol vs 30-bar vol
+    const rets=pctReturns(closes);
+    const vol10=Math.sqrt(rets.slice(-10).reduce((s,v)=>s+v**2,0)/10)*Math.sqrt(252)*100;
+    const vol30=Math.sqrt(rets.slice(-30).reduce((s,v)=>s+v**2,0)/30)*Math.sqrt(252)*100;
+    const volRegime=vol10>vol30*1.3?'Expanding':vol10<vol30*0.7?'Contracting':'Normal';
+    // Trend regime
+    let trendRegime='Sideways';
+    if(sma20&&sma50){if(last>sma20&&sma20>sma50) trendRegime=adxVal>25?'Strong Uptrend':'Weak Uptrend';else if(last<sma20&&sma20<sma50) trendRegime=adxVal>25?'Strong Downtrend':'Weak Downtrend';}
+    const color=SYMBOL_CFG[sym]?.color||'#94a3b8';
+    const trendColor=trendRegime.includes('Up')?'var(--pos)':trendRegime.includes('Down')?'var(--neg)':'var(--text3)';
+    const volColor=volRegime==='Expanding'?'var(--warn)':volRegime==='Contracting'?'var(--pos)':'var(--text3)';
+    const ma200Line=sma200?`<div style="font-size:10px;color:var(--text3)">SMA200: ${last>sma200?'<span style="color:var(--pos)">Price above</span>':'<span style="color:var(--neg)">Price below</span>'} $${sma200.toFixed(2)}</div>`:'';
+    return`<div style="background:var(--surf2);border:1px solid var(--border);border-radius:4px;padding:8px 10px;min-width:160px">
+      <div style="font-size:11px;font-weight:700;color:${color};margin-bottom:6px">${sym}</div>
+      <div style="font-size:12px;font-weight:700;color:${trendColor};margin-bottom:4px">${trendRegime}</div>
+      <div style="font-size:10px;color:${volColor};margin-bottom:4px">Vol: ${volRegime} (${vol10.toFixed(1)}% vs ${vol30.toFixed(1)}%)</div>
+      <div style="font-size:10px;color:var(--text3)">ADX: ${adxVal.toFixed(1)} ${adxVal>25?'(trending)':'(ranging)'}</div>
+      ${ma200Line}
     </div>`;
   }).join('');
 }
