@@ -860,15 +860,15 @@ const multiVixRet = computeReturns(multiVix);
 const multiSpyNorm = normalize(multiSpy, multiSpy[0]);
 const multiUsoNorm = normalize(multiUso, multiUso[0]);
 
+// Index of 3/2 (Iran strikes) = index 9
+const IRAN_IDX = 9;
+
 // VIX stats
 const preVixAvg  = multiVix.slice(0, IRAN_IDX).reduce((a,b)=>a+b,0) / IRAN_IDX;
 const postVixAvg = multiVix.slice(IRAN_IDX).reduce((a,b)=>a+b,0) / multiVix.slice(IRAN_IDX).length;
 const vixPeak    = Math.max(...multiVix);
 const vixSpyR    = pearson(multiVixRet.slice(1).filter((_,i)=>!isNaN(multiSpyRet[i+1])), multiSpyRet.slice(1).filter(v=>!isNaN(v)));
 const vixUsoR    = pearson(multiVixRet.slice(1).filter((_,i)=>!isNaN(multiUsoRet[i+1])), multiUsoRet.slice(1).filter(v=>!isNaN(v)));
-
-// Index of 3/2 (Iran strikes) = index 9
-const IRAN_IDX = 9;
 
 // Per-day pearson using all prior returns up to that date (min 3)
 function computeDailyR(spyRets, usoRets) {

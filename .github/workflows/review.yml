@@ -2,242 +2,366 @@ name: Claude Visual Review
 
 on:
   workflow_run:
-    workflows:
-      - "Deploy Dashboard"
-    types:
-      - completed
+    workflows: ["Deploy Dashboard"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       page_url:
-        description: 'URL of deployed page to review'
-        required: true
+        description: "URL of deployed page to review"
+        required: false
         type: string
 
 permissions:
   contents: write
-  pull-requests: write
   issues: write
   actions: read
 
+concurrency:
+  group: review
+  cancel-in-progress: true
+
 jobs:
-  review:
+  test-and-heal:
     runs-on: ubuntu-latest
     if: >
       github.event.workflow_run.conclusion == 'success' ||
       github.event_name == 'workflow_dispatch'
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Puppeteer
+        run: npm install puppeteer@latest
+
       - name: Determine review URL
         id: url
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "review_url=${{ github.event.inputs.page_url }}" >> $GITHUB_OUTPUT
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.page_url }}" ]; then
+            echo "review_url=${{ inputs.page_url }}" >> "$GITHUB_OUTPUT"
           else
-            echo "review_url=${{ env.PAGES_URL }}" >> $GITHUB_OUTPUT
+            echo "review_url=${{ secrets.PAGES_URL }}" >> "$GITHUB_OUTPUT"
           fi
-        env:
-          PAGES_URL: ${{ secrets.PAGES_URL }}
 
       - name: Wait for Pages CDN propagation
         run: sleep 30
 
-      - name: Fetch page and review with Claude API
-        id: review
+      - name: Run browser tests
+        id: test
         run: |
-          REVIEW_URL="${{ steps.url.outputs.review_url }}"
-          echo "Reviewing: $REVIEW_URL"
+          node << 'TESTSCRIPT'
+          const puppeteer = require('puppeteer');
+          const fs = require('fs');
 
-          # Fetch page HTML
-          PAGE_HTML=$(curl -sL --max-time 15 "$REVIEW_URL" || echo "FETCH_FAILED")
+          (async () => {
+            const url = process.env.REVIEW_URL;
+            const results = {
+              url,
+              timestamp: new Date().toISOString(),
+              console_errors: [],
+              js_exceptions: [],
+              network_errors: [],
+              page_title: '',
+              checks: {},
+              pass: true
+            };
 
-          # Build JSON payload using a temp file to avoid quoting issues
-          cat > /tmp/payload.json << 'PAYLOAD_EOF'
-          {
-            "model": "claude-sonnet-4-6",
-            "max_tokens": 2000,
-            "system": "You are a visual QA reviewer for a financial data dashboard. You will be given the HTML content of a deployed web page. Review it and return a JSON object with this exact schema: {\"status\": \"pass\" | \"warn\" | \"fail\", \"score\": number between 0 and 100, \"checks\": {\"loads_without_error\": boolean, \"has_both_tickers\": boolean, \"has_chart_elements\": boolean, \"has_correlation_stats\": boolean, \"has_event_analysis\": boolean, \"data_looks_correct\": boolean}, \"issues\": [string], \"summary\": string (2-3 sentences max)} Return ONLY the JSON object, no other text.",
-            "messages": []
+            const browser = await puppeteer.launch({
+              headless: 'new',
+              args: ['--no-sandbox', '--disable-setuid-sandbox']
+            });
+
+            try {
+              const page = await browser.newPage();
+
+              // Capture console errors
+              page.on('console', msg => {
+                if (msg.type() === 'error') {
+                  results.console_errors.push({
+                    text: msg.text(),
+                    location: msg.location()
+                  });
+                }
+              });
+
+              // Capture uncaught exceptions
+              page.on('pageerror', err => {
+                results.js_exceptions.push({
+                  message: err.message,
+                  stack: err.stack
+                });
+                results.pass = false;
+              });
+
+              // Capture failed network requests
+              page.on('requestfailed', req => {
+                results.network_errors.push({
+                  url: req.url(),
+                  failure: req.failure()?.errorText
+                });
+              });
+
+              // Navigate and wait for full load
+              const response = await page.goto(url, {
+                waitUntil: 'networkidle0',
+                timeout: 30000
+              });
+
+              results.http_status = response.status();
+              results.page_title = await page.title();
+
+              // Wait extra for Chart.js rendering
+              await new Promise(r => setTimeout(r, 3000));
+
+              // Run checks in browser context
+              results.checks = await page.evaluate(() => {
+                const html = document.documentElement.innerHTML;
+                const checks = {};
+
+                // Check page loaded with content
+                checks.has_content = document.body.innerText.length > 100;
+
+                // Check for ticker mentions
+                checks.has_spy = html.includes('SPY');
+                checks.has_uso = html.includes('USO');
+
+                // Check for chart canvases that have been rendered
+                const canvases = document.querySelectorAll('canvas');
+                checks.canvas_count = canvases.length;
+                checks.has_charts = canvases.length > 0;
+
+                // Check for stat cards with correlation values
+                const statValues = [...document.querySelectorAll('.stat-value')];
+                checks.stat_card_count = statValues.length;
+                checks.has_correlation_stats = statValues.some(el =>
+                  /[−+-]?0\.\d+/.test(el.textContent)
+                );
+
+                // Check for navigation tabs
+                const tabs = document.querySelectorAll('.nav-tab');
+                checks.tab_count = tabs.length;
+                checks.tab_names = [...tabs].map(t => t.textContent.trim());
+
+                // Check for event analysis cards
+                checks.has_event_cards = document.querySelectorAll('.event-card').length > 0;
+
+                // Check visible text isn't showing errors
+                const bodyText = document.body.innerText;
+                checks.no_visible_errors = !bodyText.includes('undefined') &&
+                                           !bodyText.includes('NaN') &&
+                                           !bodyText.includes('[object Object]');
+
+                return checks;
+              });
+
+              // Mark pass/fail based on checks
+              if (!results.checks.has_content) results.pass = false;
+              if (!results.checks.has_spy || !results.checks.has_uso) results.pass = false;
+              if (!results.checks.has_charts) results.pass = false;
+              if (!results.checks.no_visible_errors) results.pass = false;
+              if (results.http_status !== 200) results.pass = false;
+              if (results.console_errors.length > 0) results.pass = false;
+
+            } catch (err) {
+              results.js_exceptions.push({ message: err.message, stack: err.stack });
+              results.pass = false;
+            } finally {
+              await browser.close();
+            }
+
+            fs.writeFileSync('/tmp/test_results.json', JSON.stringify(results, null, 2));
+            console.log(JSON.stringify(results, null, 2));
+
+            // Set outputs
+            const outputFile = process.env.GITHUB_OUTPUT;
+            fs.appendFileSync(outputFile, `pass=${results.pass}\n`);
+            fs.appendFileSync(outputFile, `error_count=${results.js_exceptions.length + results.console_errors.length}\n`);
+          })();
+          TESTSCRIPT
+        env:
+          REVIEW_URL: ${{ steps.url.outputs.review_url }}
+
+      - name: Post results to commit
+        if: always()
+        run: |
+          python3 << 'PYEOF'
+          import json, os, subprocess
+
+          with open('/tmp/test_results.json') as f:
+              r = json.load(f)
+
+          passed = r.get('pass', False)
+          emoji = "✅" if passed else "❌"
+          checks = r.get('checks', {})
+
+          def yn(v):
+              return "✅" if v else "❌"
+
+          lines = [
+              f"## {emoji} Dashboard Test Results",
+              f"**URL:** {r['url']}",
+              f"**HTTP Status:** {r.get('http_status', 'N/A')}",
+              f"**Page Title:** {r.get('page_title', 'N/A')}",
+              "",
+              "### Runtime Checks",
+              "| Check | Result |",
+              "|-------|--------|",
+              f"| Page has content | {yn(checks.get('has_content'))} |",
+              f"| SPY ticker present | {yn(checks.get('has_spy'))} |",
+              f"| USO ticker present | {yn(checks.get('has_uso'))} |",
+              f"| Charts rendered ({checks.get('canvas_count', 0)} canvases) | {yn(checks.get('has_charts'))} |",
+              f"| Correlation stats visible | {yn(checks.get('has_correlation_stats'))} |",
+              f"| Event analysis cards | {yn(checks.get('has_event_cards'))} |",
+              f"| No visible NaN/undefined | {yn(checks.get('no_visible_errors'))} |",
+              f"| Zero JS exceptions | {yn(len(r.get('js_exceptions', [])) == 0)} |",
+              f"| Zero console errors | {yn(len(r.get('console_errors', [])) == 0)} |",
+          ]
+
+          if r.get('js_exceptions'):
+              lines.append("")
+              lines.append("### JS Exceptions")
+              for e in r['js_exceptions']:
+                  lines.append(f"```\n{e['message']}\n```")
+
+          if r.get('console_errors'):
+              lines.append("")
+              lines.append("### Console Errors")
+              for e in r['console_errors']:
+                  lines.append(f"- `{e['text']}`")
+
+          if r.get('network_errors'):
+              lines.append("")
+              lines.append("### Network Errors")
+              for e in r['network_errors']:
+                  lines.append(f"- `{e['url']}`: {e.get('failure', 'unknown')}")
+
+          lines.append("")
+          lines.append(f"*Browser test at {r['timestamp']}*")
+
+          body = "\n".join(lines)
+
+          # Write to step summary
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
+              f.write(body)
+
+          # Save for autofix step
+          with open('/tmp/review_body.md', 'w') as f:
+              f.write(body)
+
+          PYEOF
+
+      - name: Auto-fix if tests failed
+        if: steps.test.outputs.pass == 'false'
+        id: fix
+        run: |
+          echo "Tests failed — asking Claude to fix..."
+
+          # Read test results and source code
+          TEST_RESULTS=$(cat /tmp/test_results.json)
+          SOURCE_CODE=$(cat index.html)
+
+          python3 << 'FIXEOF'
+          import json, sys, os, subprocess
+
+          with open('/tmp/test_results.json') as f:
+              results = json.load(f)
+
+          with open('index.html') as f:
+              source = f.read()
+
+          errors = []
+          for e in results.get('js_exceptions', []):
+              errors.append(f"JS Exception: {e['message']}")
+          for e in results.get('console_errors', []):
+              errors.append(f"Console Error: {e['text']}")
+          checks = results.get('checks', {})
+          if not checks.get('no_visible_errors'):
+              errors.append("Page shows NaN, undefined, or [object Object] in visible text")
+          if not checks.get('has_charts'):
+              errors.append("No chart canvases were rendered")
+
+          error_text = "\n".join(errors)
+
+          # Build Claude API request
+          payload = {
+              "model": "claude-sonnet-4-6",
+              "max_tokens": 16000,
+              "system": (
+                  "You are a code fixer. You will be given an index.html file and a list of "
+                  "runtime errors caught by automated browser tests. Return ONLY the complete "
+                  "fixed index.html file. No explanation, no markdown fences, no commentary — "
+                  "just the raw HTML that should replace the file contents. Fix all reported "
+                  "errors. Do not remove features or simplify the code — only fix bugs."
+              ),
+              "messages": [{
+                  "role": "user",
+                  "content": (
+                      f"## Errors found by browser tests\n\n{error_text}\n\n"
+                      f"## Full test results\n\n```json\n{json.dumps(results, indent=2)}\n```\n\n"
+                      f"## Current index.html\n\n{source}"
+                  )
+              }]
           }
-          PAYLOAD_EOF
 
-          # Build user message content
-          USER_MSG="Review this deployed dashboard page. The page URL is: ${REVIEW_URL}
+          import urllib.request
 
-          Here is the full HTML content of the page:
-          ${PAGE_HTML}
+          req = urllib.request.Request(
+              "https://api.anthropic.com/v1/messages",
+              data=json.dumps(payload).encode(),
+              headers={
+                  "x-api-key": os.environ["ANTHROPIC_API_KEY"],
+                  "anthropic-version": "2023-06-01",
+                  "content-type": "application/json"
+              }
+          )
 
-          Check that:
-          1. The page loaded and contains meaningful content (not a 404 or blank)
-          2. Both tickers SPY and USO are mentioned in the data
-          3. Chart canvas elements are present in the HTML
-          4. Correlation statistics cards are present (r values like -0.72, +0.35, -0.87)
-          5. Event analysis section mentions Bessent, WSJ, Trump, GTC
-          6. Price data looks reasonable (SPY ~660-690, USO ~77-120 range)"
+          try:
+              with urllib.request.urlopen(req, timeout=120) as resp:
+                  response = json.loads(resp.read())
 
-          # Write final payload using python for safe JSON encoding
-          python3 -c "
-          import json, sys
-          with open('/tmp/payload.json') as f:
-              payload = json.load(f)
-          user_msg = sys.stdin.read()
-          payload['messages'] = [{'role': 'user', 'content': user_msg}]
-          print(json.dumps(payload))
-          " <<< "$USER_MSG" > /tmp/final_payload.json
+              fixed_html = response["content"][0]["text"]
 
-          # Call Claude API
-          RESPONSE=$(curl -s \
-            --max-time 60 \
-            -X POST https://api.anthropic.com/v1/messages \
-            -H "x-api-key: ${ANTHROPIC_API_KEY}" \
-            -H "anthropic-version: 2023-06-01" \
-            -H "content-type: application/json" \
-            -d @/tmp/final_payload.json)
+              # Strip markdown fences if Claude added them anyway
+              import re
+              fixed_html = re.sub(r'^\s*```(?:html)?\s*\n?', '', fixed_html)
+              fixed_html = re.sub(r'\n?\s*```\s*$', '', fixed_html)
 
-          echo "Raw API response: $RESPONSE"
+              with open('index.html', 'w') as f:
+                  f.write(fixed_html)
 
-          # Extract the text content from the response, stripping markdown code fences
-          REVIEW_JSON=$(echo "$RESPONSE" | python3 -c "
-          import json, sys, re
-          resp = json.load(sys.stdin)
-          content = resp.get('content', [{}])
-          text = content[0].get('text', '{}') if content else '{}'
-          # Strip markdown code fences (e.g. \`\`\`json ... \`\`\`)
-          text = re.sub(r'^\s*\`\`\`(?:json)?\s*\n?', '', text)
-          text = re.sub(r'\n?\s*\`\`\`\s*$', '', text)
-          print(text.strip())
-          " 2>/dev/null || echo '{}')
+              print("Fix applied successfully")
 
-          echo "Review JSON: $REVIEW_JSON"
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write("fixed=true\n")
 
-          # Parse review fields
-          REVIEW_STATUS=$(echo "$REVIEW_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status','fail'))" 2>/dev/null || echo "fail")
-          REVIEW_SCORE=$(echo "$REVIEW_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('score',0))" 2>/dev/null || echo "0")
-          REVIEW_SUMMARY=$(echo "$REVIEW_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('summary','Review error'))" 2>/dev/null || echo "Review error")
+          except Exception as e:
+              print(f"Fix failed: {e}")
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write("fixed=false\n")
 
-          # Set outputs
-          echo "review_status=$REVIEW_STATUS" >> $GITHUB_OUTPUT
-          echo "review_score=$REVIEW_SCORE" >> $GITHUB_OUTPUT
-          echo "review_summary=$REVIEW_SUMMARY" >> $GITHUB_OUTPUT
-
-          # Save full JSON for next step
-          echo "$REVIEW_JSON" > /tmp/review_result.json
-
-          # Export for subsequent steps
-          echo "REVIEW_STATUS=$REVIEW_STATUS" >> $GITHUB_ENV
-          echo "REVIEW_SCORE=$REVIEW_SCORE" >> $GITHUB_ENV
+          FIXEOF
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
-      - name: Post review comment to latest commit
+      - name: Commit and push fix
+        if: steps.fix.outputs.fixed == 'true'
         run: |
-          REVIEW_URL="${{ steps.url.outputs.review_url }}"
-          REVIEW_STATUS="${{ steps.review.outputs.review_status }}"
-          REVIEW_SCORE="${{ steps.review.outputs.review_score }}"
-          REVIEW_SUMMARY="${{ steps.review.outputs.review_summary }}"
-
-          # Parse checks from saved JSON
-          CHECKS=$(python3 -c "
-          import json
-          try:
-              with open('/tmp/review_result.json') as f:
-                  d = json.load(f)
-              checks = d.get('checks', {})
-              def emoji(v):
-                  return '✅' if v else '❌'
-              rows = [
-                  f\"| loads_without_error | {emoji(checks.get('loads_without_error'))} |\",
-                  f\"| has_both_tickers | {emoji(checks.get('has_both_tickers'))} |\",
-                  f\"| has_chart_elements | {emoji(checks.get('has_chart_elements'))} |\",
-                  f\"| has_correlation_stats | {emoji(checks.get('has_correlation_stats'))} |\",
-                  f\"| has_event_analysis | {emoji(checks.get('has_event_analysis'))} |\",
-                  f\"| data_looks_correct | {emoji(checks.get('data_looks_correct'))} |\",
-              ]
-              print('\n'.join(rows))
-          except Exception as e:
-              print(f'| error parsing checks | ❌ |')
-          " 2>/dev/null || echo "| error | ❌ |")
-
-          ISSUES=$(python3 -c "
-          import json
-          try:
-              with open('/tmp/review_result.json') as f:
-                  d = json.load(f)
-              issues = d.get('issues', [])
-              if issues:
-                  print('\n'.join(f'- {i}' for i in issues))
-              else:
-                  print('None')
-          except:
-              print('Could not parse issues')
-          " 2>/dev/null || echo "Could not parse issues")
-
-          STATUS_EMOJI=""
-          case "$REVIEW_STATUS" in
-            pass) STATUS_EMOJI="✅" ;;
-            warn) STATUS_EMOJI="⚠️" ;;
-            fail) STATUS_EMOJI="❌" ;;
-            *) STATUS_EMOJI="❓" ;;
-          esac
-
-          COMMENT_BODY="## ${STATUS_EMOJI} Dashboard Review — Score: ${REVIEW_SCORE}/100
-
-          **Status:** \`${REVIEW_STATUS}\`
-          **URL reviewed:** ${REVIEW_URL}
-
-          ### Checks
-
-          | Check | Result |
-          |-------|--------|
-          ${CHECKS}
-
-          ### Summary
-          ${REVIEW_SUMMARY}
-
-          ### Issues
-          ${ISSUES}
-
-          ---
-          *Automated review by Claude claude-sonnet-4-6 · Run [#${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
-
-          # Determine commit SHA
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
           else
-            COMMIT_SHA="${{ github.sha }}"
-          fi
+            git commit -m "autofix: resolve runtime errors caught by browser tests
 
-          # Post commit comment via GitHub API
-          curl -s -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ github.repository }}/commits/${COMMIT_SHA:-${{ github.sha }}}/comments" \
-            -d "$(python3 -c "import json,sys; print(json.dumps({'body': sys.stdin.read()}))" <<< "$COMMENT_BODY")"
-
-          # Create issue if failed
-          if [ "$REVIEW_STATUS" = "fail" ]; then
-            gh issue create \
-              --repo "${{ github.repository }}" \
-              --title "Dashboard review failed - deployment ${{ github.run_id }}" \
-              --body "## Review Failed
-
-          **Run ID:** ${{ github.run_id }}
-          **Score:** ${REVIEW_SCORE}/100
-          **URL:** ${REVIEW_URL}
-
-          **Summary:** ${REVIEW_SUMMARY}
-
-          **Issues:**
-          ${ISSUES}
-
-          [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Fail if review returned fail status
-        run: |
-          if [ "$REVIEW_STATUS" = "fail" ]; then
-            echo "Review failed with status: fail"
-            exit 1
+          Errors fixed by Claude claude-sonnet-4-6 based on Puppeteer test results.
+          This commit triggers a new deploy + review cycle."
+            git push origin main
           fi
