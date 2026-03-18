@@ -341,6 +341,10 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Momentum Composite</div>
       <div id="momentum-scores" style="display:flex;gap:8px;flex-wrap:wrap"></div>
     </div>
+    <div id="squeeze-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Bollinger Squeeze Detector — Potential Breakout Setups</div>
+      <div id="squeeze-grid" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
     <div id="vol-profile-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3)">Volume Profile — <span id="vp-sym-label"></span></span>
@@ -452,6 +456,25 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       </div>
       <div id="bt-results" style="font-size:11px;color:var(--text2)">Select a symbol and strategy, then click Run.</div>
       <div id="bt-chart-wrap" style="height:120px;position:relative;display:none"><canvas id="bt-chart"></canvas></div>
+    <div id="trade-journal-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3)">Trade Journal</span>
+        <span style="font-size:10px;color:var(--text3)">Persists in localStorage</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px">
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">Symbol<input id="tj-sym" placeholder="SPY" maxlength="10" style="background:var(--surf2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 8px;width:80px"></label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">Side
+          <select id="tj-side" style="background:var(--surf2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 8px">
+            <option value="LONG">LONG</option><option value="SHORT">SHORT</option>
+          </select>
+        </label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">Entry<input id="tj-entry" type="number" step="0.01" placeholder="500.00" style="background:var(--surf2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 8px;width:90px"></label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">Exit<input id="tj-exit" type="number" step="0.01" placeholder="Optional" style="background:var(--surf2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 8px;width:90px"></label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">Size<input id="tj-size" type="number" step="0.01" placeholder="100" style="background:var(--surf2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 8px;width:80px"></label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;flex:1;min-width:150px">Notes<input id="tj-note" placeholder="Trade thesis, setup…" style="background:var(--surf2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 8px;width:100%"></label>
+        <button class="btn btn-primary" onclick="addTradeJournalEntry()">+ Log Trade</button>
+      </div>
+      <div id="trade-journal-list" style="overflow-x:auto"></div>
     </div>
   </section>
   <section id="tab-ingest" class="main-tab">
@@ -1428,7 +1451,7 @@ function updateRegimeBar(){
   }
   bar.innerHTML=items.length?items.join('<span style="color:var(--border2);margin:0 2px">|</span>'):'<span style="color:var(--text3);font-size:10px">Loading market data…</span>';
 }
-function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate') updateCorrStats();if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();}updateCorrSelectors();updateWatchlistChips();}
+function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate') updateCorrStats();if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();}updateCorrSelectors();updateWatchlistChips();}
 function startPolling(){stopPolling();if(CFG.pollInterval<=0||CFG.source==='demo') return;S.pollTimer=setInterval(()=>fetchAllSymbols(),CFG.pollInterval*1000);}
 function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
 function startDemoTick(){stopDemoTick();S.demoTicker=setInterval(tickDemoData,10000);}
@@ -1439,7 +1462,7 @@ function switchTab(tab){
   if(panel) panel.classList.add('active');if(btn) btn.classList.add('active');
   if(tab==='correlate'){updateCorrStats();if(CFG.source!=='demo'&&Object.keys(yieldCache).length===0) setTimeout(fetchYieldCurve,200);}
   if(tab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();}
-  if(tab==='portfolio'){renderPortfolio();renderWatchlistNotes();}
+  if(tab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();}
 }
 function switchIngest(type){
   document.querySelectorAll('.ingest-panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.ingest-nav-btn').forEach(b=>b.classList.remove('active'));
@@ -1893,6 +1916,52 @@ function saveNoteEvent(el,sym){
   const tsEl=document.getElementById(`note-ts-${sym}`);if(tsEl) tsEl.textContent='Saved '+now;
 }
 function clearNote(sym){saveNote(sym,'');const tsEl=document.getElementById(`note-ts-${sym}`);if(tsEl) tsEl.textContent='';renderWatchlistNotes();}
+// === TRADE JOURNAL ===
+function loadJournal(){try{return JSON.parse(localStorage.getItem('correlate-journal')||'[]');}catch{return[];}}
+function saveJournal(entries){localStorage.setItem('correlate-journal',JSON.stringify(entries));}
+function addTradeJournalEntry(){
+  const sym=document.getElementById('tj-sym')?.value?.trim()?.toUpperCase();
+  const side=document.getElementById('tj-side')?.value||'LONG';
+  const entry=parseFloat(document.getElementById('tj-entry')?.value||'0');
+  const exit=parseFloat(document.getElementById('tj-exit')?.value||'0')||null;
+  const size=parseFloat(document.getElementById('tj-size')?.value||'0')||null;
+  const note=document.getElementById('tj-note')?.value?.trim()||'';
+  if(!sym||!entry){showToast('Symbol and entry price required','warn');return;}
+  const entries=loadJournal();
+  const pnl=exit&&size?((side==='LONG'?exit-entry:entry-exit)*size).toFixed(2):null;
+  const pnlPct=exit?((side==='LONG'?exit/entry-1:1-exit/entry)*100).toFixed(2):null;
+  entries.unshift({id:Date.now(),sym,side,entry,exit,size,note,date:new Date().toLocaleDateString(),pnl,pnlPct});
+  saveJournal(entries);
+  document.getElementById('tj-sym').value='';document.getElementById('tj-entry').value='';document.getElementById('tj-exit').value='';document.getElementById('tj-size').value='';document.getElementById('tj-note').value='';
+  renderTradeJournal();showToast(`Trade logged: ${side} ${sym}`,'success');
+}
+function removeJournalEntry(id){const entries=loadJournal().filter(e=>e.id!==id);saveJournal(entries);renderTradeJournal();}
+function renderTradeJournal(){
+  const el=document.getElementById('trade-journal-list');if(!el) return;
+  const entries=loadJournal();
+  if(!entries.length){el.innerHTML='<div style="color:var(--text3);font-size:11px;padding:8px 0">No trades logged yet.</div>';return;}
+  const wins=entries.filter(e=>e.pnl&&parseFloat(e.pnl)>0).length;
+  const losses=entries.filter(e=>e.pnl&&parseFloat(e.pnl)<0).length;
+  const totalPnl=entries.reduce((s,e)=>s+(parseFloat(e.pnl)||0),0);
+  const summary=`<div style="display:flex;gap:12px;margin-bottom:8px;flex-wrap:wrap;font-size:11px"><span style="color:var(--text3)">Trades: ${entries.length}</span><span class="pos">Wins: ${wins}</span><span class="neg">Losses: ${losses}</span><span class="${totalPnl>=0?'pos':'neg'}">Total P&L: ${totalPnl>=0?'+':''}$${totalPnl.toFixed(2)}</span></div>`;
+  const rows=entries.map(e=>{
+    const pnlCls=e.pnl?(parseFloat(e.pnl)>=0?'pos':'neg'):'';
+    const sideCls=e.side==='LONG'?'pos':'neg';
+    return`<tr>
+      <td style="color:var(--text3)">${e.date}</td>
+      <td style="color:${SYMBOL_CFG[e.sym]?.color||'#94a3b8'};font-weight:700">${e.sym}</td>
+      <td class="${sideCls}">${e.side}</td>
+      <td>$${parseFloat(e.entry).toFixed(2)}</td>
+      <td>${e.exit?'$'+parseFloat(e.exit).toFixed(2):'—'}</td>
+      <td>${e.size??'—'}</td>
+      <td class="${pnlCls}">${e.pnl?(parseFloat(e.pnl)>=0?'+':'')+'$'+e.pnl:'—'}</td>
+      <td class="${pnlCls}">${e.pnlPct?(parseFloat(e.pnlPct)>=0?'+':'')+e.pnlPct+'%':'—'}</td>
+      <td style="color:var(--text3);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(e.note)}</td>
+      <td><button class="btn" onclick="removeJournalEntry(${e.id})" style="padding:1px 5px;font-size:10px">×</button></td>
+    </tr>`;
+  }).join('');
+  el.innerHTML=summary+`<table class="portfolio-table"><thead><tr><th>Date</th><th>Sym</th><th>Side</th><th>Entry</th><th>Exit</th><th>Size</th><th>P&L</th><th>Ret%</th><th>Notes</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+}
 function renderPortfolio(){
   const tbody=document.getElementById('portfolio-tbody');const summary=document.getElementById('portfolio-summary');
   if(!tbody) return;
@@ -2197,6 +2266,53 @@ function init(){
   updateClock();setInterval(updateClock,15000);
   if(CFG.source==='demo'){initDemoData();updateUI();startDemoTick();}
   else{initDemoData();updateUI();fetchAllSymbols(CFG.tf).then(()=>{startPolling();setTimeout(fetchSectorData,1000);setTimeout(renderNewsHeadlines,2000);});}
+}
+// === BOLLINGER SQUEEZE DETECTOR ===
+function renderSqueezePanel(){
+  const el=document.getElementById('squeeze-grid');if(!el) return;
+  const syms=CFG.symbols.slice(0,8);
+  const cards=syms.map(sym=>{
+    const bars=S.data[sym]?.bars;const q=S.data[sym]?.quote;
+    const cfg=SYMBOL_CFG[sym]||{color:'#94a3b8'};
+    if(!bars||bars.length<22){return`<div class="signal-card" style="min-width:130px"><span class="signal-sym" style="color:${cfg.color}">${sym}</span><span class="signal-detail">No data</span></div>`;}
+    const closes=bars.map(b=>b.close);
+    // BB width = (upper - lower) / middle
+    const BB_PERIOD=20;const BB_MULT=2;
+    const calcBBW=(c)=>{
+      if(c.length<BB_PERIOD) return null;
+      const sl=c.slice(-BB_PERIOD);const mean=sl.reduce((a,b)=>a+b,0)/BB_PERIOD;
+      const std=Math.sqrt(sl.reduce((s,v)=>s+(v-mean)**2,0)/BB_PERIOD);
+      return mean>0?(std*BB_MULT*2)/mean*100:null; // bandwidth %
+    };
+    const currentBBW=calcBBW(closes);
+    if(currentBBW==null) return'';
+    // Compare to 50-bar lookback to identify relative squeeze
+    const lookback=[];
+    for(let i=BB_PERIOD;i<closes.length;i++) lookback.push(calcBBW(closes.slice(0,i+1)));
+    const validLB=lookback.filter(v=>v!=null);
+    const minBBW=Math.min(...validLB);const maxBBW=Math.max(...validLB);
+    const pctile=maxBBW>minBBW?(currentBBW-minBBW)/(maxBBW-minBBW)*100:50;
+    // Squeeze = BB width is in lower 20th percentile historically
+    const isSqueeze=pctile<20;const isExpanding=pctile>80;
+    // Momentum direction for potential breakout direction
+    const roc=closes.length>=5?((closes[closes.length-1]/closes[closes.length-6])-1)*100:0;
+    const dir=roc>0?'↑ LONG':roc<0?'↓ SHORT':'—';
+    const dirCls=roc>0?'pos':'neg';
+    const statusLabel=isSqueeze?'SQUEEZE':isExpanding?'EXPANDING':'NORMAL';
+    const statusCls=isSqueeze?'rb-bear':isExpanding?'rb-bull':'rb-neutral';
+    const bwFmt=currentBBW.toFixed(2);
+    return`<div class="signal-card" style="flex-direction:column;gap:4px;min-width:140px">
+      <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+        <span class="signal-sym" style="color:${cfg.color}">${sym}</span>
+        <span class="regime-badge ${statusCls}">${statusLabel}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3)">
+        <span>BB Width: ${bwFmt}%</span><span>Pctile: ${pctile.toFixed(0)}%</span>
+      </div>
+      ${isSqueeze?`<div style="font-size:10px;color:var(--warn)">⚡ Breakout watch — <span class="${dirCls}">${dir}</span></div>`:''}
+    </div>`;
+  }).join('');
+  el.innerHTML=cards||'<span style="color:var(--text3)">No data</span>';
 }
 // === FEAR & GREED COMPOSITE ===
 function computeFearGreed(){
