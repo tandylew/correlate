@@ -562,6 +562,15 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       </div>
       <div id="bs-result" style="font-size:12px;color:var(--text2)"></div>
     </div>
+    <div id="stress-test-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:10px">Portfolio Stress Test — Scenario Analysis</div>
+      <div id="stress-test-results"></div>
+      <button class="btn btn-primary" style="margin-top:8px" onclick="runStressTest()">Run Stress Test</button>
+    </div>
+    <div id="sharpe-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Risk-Adjusted Performance Metrics</div>
+      <div id="sharpe-grid" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
   </section>
   <section id="tab-ingest" class="main-tab">
     <div id="ingest-nav">
@@ -1591,7 +1600,7 @@ function updateRegimeBar(){
   }
   bar.innerHTML=items.length?items.join('<span style="color:var(--border2);margin:0 2px">|</span>'):'<span style="color:var(--text3);font-size:10px">Loading market data…</span>';
 }
-function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderLinRegPanel();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();}if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();}updateCorrSelectors();updateWatchlistChips();}
+function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderLinRegPanel();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();}if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();}updateCorrSelectors();updateWatchlistChips();}
 function startPolling(){stopPolling();if(CFG.pollInterval<=0||CFG.source==='demo') return;S.pollTimer=setInterval(()=>fetchAllSymbols(),CFG.pollInterval*1000);}
 function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
 function startDemoTick(){stopDemoTick();S.demoTicker=setInterval(tickDemoData,10000);}
@@ -1602,7 +1611,7 @@ function switchTab(tab){
   if(panel) panel.classList.add('active');if(btn) btn.classList.add('active');
   if(tab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();if(CFG.source!=='demo'&&Object.keys(yieldCache).length===0) setTimeout(fetchYieldCurve,200);}
   if(tab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();}
-  if(tab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();}
+  if(tab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();}
 }
 function switchIngest(type){
   document.querySelectorAll('.ingest-panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.ingest-nav-btn').forEach(b=>b.classList.remove('active'));
@@ -2913,6 +2922,91 @@ function buildVolumeProfile(){
     levelsEl.innerHTML=`<div style="color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;font-size:9px;margin-bottom:4px">Key Levels</div>${hvnHtml}<div style="margin:6px 0;border-top:1px solid var(--border)"></div>${lvnHtml}<div style="margin-top:8px;color:var(--warn);font-size:9px">● Current: $${curPrice.toFixed(2)}</div>`;
   }
 }
+// === PORTFOLIO STRESS TEST ===
+const STRESS_SCENARIOS=[
+  {name:'Market Crash -20%',spy:-20,uso:-15,vix:+80,other:-18},
+  {name:'Mild Correction -10%',spy:-10,uso:-8,vix:+40,other:-9},
+  {name:'Rate Shock',spy:-8,uso:+5,vix:+35,other:-7},
+  {name:'Oil Spike +30%',spy:-3,uso:+30,vix:+15,other:-2},
+  {name:'Bull Run +15%',spy:+15,uso:+10,vix:-20,other:+13},
+  {name:'2008-Style Crisis',spy:-38,uso:-55,vix:+150,other:-35},
+  {name:'COVID Flash Crash',spy:-34,uso:-60,vix:+420,other:-30},
+  {name:'Soft Landing',spy:+8,uso:+3,vix:-10,other:+7},
+];
+function runStressTest(){
+  const el=document.getElementById('stress-test-results');if(!el) return;
+  if(!CFG.portfolio.length){el.innerHTML='<span style="color:var(--text3);font-size:11px">Add holdings in the portfolio table above first.</span>';return;}
+  const rows=STRESS_SCENARIOS.map(sc=>{
+    let totalPnl=0;let totalVal=0;
+    CFG.portfolio.forEach(h=>{
+      const cur=S.data[h.sym]?.quote?.price;if(!cur) return;
+      const val=cur*h.shares;totalVal+=val;
+      const pct=h.sym==='SPY'?sc.spy:h.sym==='USO'?sc.uso:h.sym==='VIX'?sc.vix:sc.other;
+      totalPnl+=val*(pct/100);
+    });
+    if(totalVal===0) return null;
+    const pct=totalPnl/totalVal*100;
+    return{...sc,pnl:totalPnl,pct,val:totalVal};
+  }).filter(Boolean);
+  if(!rows.length){el.innerHTML='<span style="color:var(--text3);font-size:11px">No position data available yet.</span>';return;}
+  el.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:11px">
+    <thead><tr style="border-bottom:1px solid var(--border)">
+      <th style="text-align:left;padding:4px 8px;color:var(--text3);font-weight:500">Scenario</th>
+      <th style="text-align:right;padding:4px 8px;color:var(--text3);font-weight:500">P&L</th>
+      <th style="text-align:right;padding:4px 8px;color:var(--text3);font-weight:500">Return</th>
+      <th style="padding:4px 8px;color:var(--text3);font-weight:500">Bar</th>
+    </tr></thead>
+    <tbody>${rows.map(r=>{
+      const col=r.pnl>=0?'var(--pos)':'var(--neg)';
+      const barW=Math.min(100,Math.abs(r.pct)*2);
+      const barCol=r.pnl>=0?'rgba(74,222,128,0.6)':'rgba(248,113,113,0.6)';
+      return`<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:5px 8px;color:var(--text)">${r.name}</td>
+        <td style="text-align:right;padding:5px 8px;color:${col};font-weight:600">${r.pnl>=0?'+':''}$${Math.round(r.pnl).toLocaleString()}</td>
+        <td style="text-align:right;padding:5px 8px;color:${col}">${r.pct>=0?'+':''}${r.pct.toFixed(1)}%</td>
+        <td style="padding:5px 12px;min-width:80px"><div style="height:8px;border-radius:2px;background:${barCol};width:${barW}%;min-width:2px"></div></td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
+// === RISK-ADJUSTED PERFORMANCE METRICS ===
+function renderSharpeMetrics(){
+  const el=document.getElementById('sharpe-grid');if(!el) return;
+  const syms=CFG.symbols;if(!syms.length) return;
+  const rf=0.0525/252;// daily risk-free rate
+  const cards=syms.map(sym=>{
+    const bars=getFilteredBars(sym,CFG.tf);if(bars.length<20) return null;
+    const closes=bars.map(b=>b.close);
+    const rets=pctReturns(closes).filter(v=>!isNaN(v)&&isFinite(v));if(rets.length<10) return null;
+    const n=rets.length;const mean=rets.reduce((s,v)=>s+v,0)/n;
+    const variance=rets.reduce((s,v)=>s+(v-mean)**2,0)/n;
+    const std=Math.sqrt(variance);
+    const annMean=mean*252;const annStd=std*Math.sqrt(252);
+    const sharpe=std>0?(annMean-0.0525)/annStd:0;
+    // Sortino: downside deviation only
+    const downside=rets.filter(v=>v<rf);
+    const downDev=downside.length>0?Math.sqrt(downside.reduce((s,v)=>s+(v-rf)**2,0)/n)*Math.sqrt(252):0;
+    const sortino=downDev>0?(annMean-0.0525)/downDev:0;
+    // Calmar: annualized return / max drawdown
+    let peak=closes[0];let maxDD=0;
+    closes.forEach(c=>{if(c>peak) peak=c;const dd=(c-peak)/peak;if(dd<maxDD) maxDD=dd;});
+    const calmar=maxDD<0?(annMean/Math.abs(maxDD)):null;
+    const color=SYMBOL_CFG[sym]?.color||'#94a3b8';
+    return{sym,sharpe,sortino,calmar,annMean,annStd,color};
+  }).filter(Boolean);
+  el.innerHTML=cards.map(c=>`<div style="background:var(--surf2);border:1px solid var(--border);border-radius:4px;padding:10px 12px;min-width:150px">
+    <div style="font-size:11px;font-weight:700;color:${c.color};margin-bottom:8px">${c.sym}</div>
+    <div style="display:flex;flex-direction:column;gap:4px;font-size:11px">
+      <div style="display:flex;justify-content:space-between;gap:12px"><span style="color:var(--text3)">Sharpe</span><strong style="color:${c.sharpe>=1?'var(--pos)':c.sharpe>=0?'var(--text)':'var(--neg)'}">${c.sharpe.toFixed(2)}</strong></div>
+      <div style="display:flex;justify-content:space-between;gap:12px"><span style="color:var(--text3)">Sortino</span><strong style="color:${c.sortino>=1?'var(--pos)':c.sortino>=0?'var(--text)':'var(--neg)'}">${c.sortino.toFixed(2)}</strong></div>
+      ${c.calmar!=null?`<div style="display:flex;justify-content:space-between;gap:12px"><span style="color:var(--text3)">Calmar</span><strong style="color:${c.calmar>=1?'var(--pos)':c.calmar>=0?'var(--text)':'var(--neg)'}">${c.calmar.toFixed(2)}</strong></div>`:''}
+      <div style="display:flex;justify-content:space-between;gap:12px"><span style="color:var(--text3)">Ann. Return</span><strong style="color:${c.annMean>=0?'var(--pos)':'var(--neg)'}">${(c.annMean*100).toFixed(1)}%</strong></div>
+      <div style="display:flex;justify-content:space-between;gap:12px"><span style="color:var(--text3)">Ann. Vol</span><strong style="color:var(--text)">${(c.annStd*100).toFixed(1)}%</strong></div>
+    </div>
+  </div>`).join('');
+}
+
 // === DAY-OF-WEEK RETURN HEATMAP ===
 function renderDOWHeatmap(){
   const sym=CFG.symbols[0];if(!sym) return;
