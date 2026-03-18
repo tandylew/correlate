@@ -1,0 +1,241 @@
+name: Claude Visual Review
+
+on:
+  workflow_run:
+    workflows:
+      - "Deploy Dashboard"
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      page_url:
+        description: 'URL of deployed page to review'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  actions: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    if: >
+      github.event.workflow_run.conclusion == 'success' ||
+      github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Determine review URL
+        id: url
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "review_url=${{ github.event.inputs.page_url }}" >> $GITHUB_OUTPUT
+          else
+            echo "review_url=${{ env.PAGES_URL }}" >> $GITHUB_OUTPUT
+          fi
+        env:
+          PAGES_URL: ${{ secrets.PAGES_URL }}
+
+      - name: Wait for Pages CDN propagation
+        run: sleep 30
+
+      - name: Fetch page and review with Claude API
+        id: review
+        run: |
+          REVIEW_URL="${{ steps.url.outputs.review_url }}"
+          echo "Reviewing: $REVIEW_URL"
+
+          # Fetch page HTML
+          PAGE_HTML=$(curl -s --max-time 15 "$REVIEW_URL" || echo "FETCH_FAILED")
+
+          # Build JSON payload using a temp file to avoid quoting issues
+          cat > /tmp/payload.json << 'PAYLOAD_EOF'
+          {
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 2000,
+            "system": "You are a visual QA reviewer for a financial data dashboard. You will be given the HTML content of a deployed web page. Review it and return a JSON object with this exact schema: {\"status\": \"pass\" | \"warn\" | \"fail\", \"score\": number between 0 and 100, \"checks\": {\"loads_without_error\": boolean, \"has_both_tickers\": boolean, \"has_chart_elements\": boolean, \"has_correlation_stats\": boolean, \"has_event_analysis\": boolean, \"data_looks_correct\": boolean}, \"issues\": [string], \"summary\": string (2-3 sentences max)} Return ONLY the JSON object, no other text.",
+            "messages": []
+          }
+          PAYLOAD_EOF
+
+          # Build user message content
+          USER_MSG="Review this deployed dashboard page. The page URL is: ${REVIEW_URL}
+
+          Here is the full HTML content of the page:
+          ${PAGE_HTML}
+
+          Check that:
+          1. The page loaded and contains meaningful content (not a 404 or blank)
+          2. Both tickers SPY and USO are mentioned in the data
+          3. Chart canvas elements are present in the HTML
+          4. Correlation statistics cards are present (r values like -0.72, +0.35, -0.87)
+          5. Event analysis section mentions Bessent, WSJ, Trump, GTC
+          6. Price data looks reasonable (SPY ~660-690, USO ~77-120 range)"
+
+          # Write final payload using python for safe JSON encoding
+          python3 -c "
+          import json, sys
+          with open('/tmp/payload.json') as f:
+              payload = json.load(f)
+          user_msg = sys.stdin.read()
+          payload['messages'] = [{'role': 'user', 'content': user_msg}]
+          print(json.dumps(payload))
+          " <<< "$USER_MSG" > /tmp/final_payload.json
+
+          # Call Claude API
+          RESPONSE=$(curl -s \
+            --max-time 60 \
+            -X POST https://api.anthropic.com/v1/messages \
+            -H "x-api-key: ${ANTHROPIC_API_KEY}" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d @/tmp/final_payload.json)
+
+          echo "Raw API response: $RESPONSE"
+
+          # Extract the text content from the response
+          REVIEW_JSON=$(echo "$RESPONSE" | python3 -c "
+          import json, sys
+          resp = json.load(sys.stdin)
+          content = resp.get('content', [{}])
+          if content:
+              print(content[0].get('text', '{}'))
+          else:
+              print('{}')
+          " 2>/dev/null || echo '{}')
+
+          echo "Review JSON: $REVIEW_JSON"
+
+          # Parse review fields
+          REVIEW_STATUS=$(echo "$REVIEW_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status','fail'))" 2>/dev/null || echo "fail")
+          REVIEW_SCORE=$(echo "$REVIEW_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('score',0))" 2>/dev/null || echo "0")
+          REVIEW_SUMMARY=$(echo "$REVIEW_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('summary','Review error'))" 2>/dev/null || echo "Review error")
+
+          # Set outputs
+          echo "review_status=$REVIEW_STATUS" >> $GITHUB_OUTPUT
+          echo "review_score=$REVIEW_SCORE" >> $GITHUB_OUTPUT
+          echo "review_summary=$REVIEW_SUMMARY" >> $GITHUB_OUTPUT
+
+          # Save full JSON for next step
+          echo "$REVIEW_JSON" > /tmp/review_result.json
+
+          # Export for subsequent steps
+          echo "REVIEW_STATUS=$REVIEW_STATUS" >> $GITHUB_ENV
+          echo "REVIEW_SCORE=$REVIEW_SCORE" >> $GITHUB_ENV
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Post review comment to latest commit
+        run: |
+          REVIEW_URL="${{ steps.url.outputs.review_url }}"
+          REVIEW_STATUS="${{ steps.review.outputs.review_status }}"
+          REVIEW_SCORE="${{ steps.review.outputs.review_score }}"
+          REVIEW_SUMMARY="${{ steps.review.outputs.review_summary }}"
+
+          # Parse checks from saved JSON
+          CHECKS=$(python3 -c "
+          import json
+          try:
+              with open('/tmp/review_result.json') as f:
+                  d = json.load(f)
+              checks = d.get('checks', {})
+              def emoji(v):
+                  return '✅' if v else '❌'
+              rows = [
+                  f\"| loads_without_error | {emoji(checks.get('loads_without_error'))} |\",
+                  f\"| has_both_tickers | {emoji(checks.get('has_both_tickers'))} |\",
+                  f\"| has_chart_elements | {emoji(checks.get('has_chart_elements'))} |\",
+                  f\"| has_correlation_stats | {emoji(checks.get('has_correlation_stats'))} |\",
+                  f\"| has_event_analysis | {emoji(checks.get('has_event_analysis'))} |\",
+                  f\"| data_looks_correct | {emoji(checks.get('data_looks_correct'))} |\",
+              ]
+              print('\n'.join(rows))
+          except Exception as e:
+              print(f'| error parsing checks | ❌ |')
+          " 2>/dev/null || echo "| error | ❌ |")
+
+          ISSUES=$(python3 -c "
+          import json
+          try:
+              with open('/tmp/review_result.json') as f:
+                  d = json.load(f)
+              issues = d.get('issues', [])
+              if issues:
+                  print('\n'.join(f'- {i}' for i in issues))
+              else:
+                  print('None')
+          except:
+              print('Could not parse issues')
+          " 2>/dev/null || echo "Could not parse issues")
+
+          STATUS_EMOJI=""
+          case "$REVIEW_STATUS" in
+            pass) STATUS_EMOJI="✅" ;;
+            warn) STATUS_EMOJI="⚠️" ;;
+            fail) STATUS_EMOJI="❌" ;;
+            *) STATUS_EMOJI="❓" ;;
+          esac
+
+          COMMENT_BODY="## ${STATUS_EMOJI} Dashboard Review — Score: ${REVIEW_SCORE}/100
+
+          **Status:** \`${REVIEW_STATUS}\`
+          **URL reviewed:** ${REVIEW_URL}
+
+          ### Checks
+
+          | Check | Result |
+          |-------|--------|
+          ${CHECKS}
+
+          ### Summary
+          ${REVIEW_SUMMARY}
+
+          ### Issues
+          ${ISSUES}
+
+          ---
+          *Automated review by Claude claude-sonnet-4-6 · Run [#${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
+
+          # Determine commit SHA
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
+          else
+            COMMIT_SHA=$(git -C /tmp ls-remote https://github.com/${{ github.repository }}.git HEAD 2>/dev/null | cut -f1 || echo "${{ github.sha }}")
+          fi
+
+          # Post commit comment via GitHub API
+          curl -s -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/commits/${COMMIT_SHA:-${{ github.sha }}}/comments" \
+            -d "$(python3 -c "import json,sys; print(json.dumps({'body': sys.stdin.read()}))" <<< "$COMMENT_BODY")"
+
+          # Create issue if failed
+          if [ "$REVIEW_STATUS" = "fail" ]; then
+            gh issue create \
+              --title "Dashboard review failed - deployment ${{ github.run_id }}" \
+              --body "## Review Failed
+
+          **Run ID:** ${{ github.run_id }}
+          **Score:** ${REVIEW_SCORE}/100
+          **URL:** ${REVIEW_URL}
+
+          **Summary:** ${REVIEW_SUMMARY}
+
+          **Issues:**
+          ${ISSUES}
+
+          [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fail if review returned fail status
+        run: |
+          if [ "$REVIEW_STATUS" = "fail" ]; then
+            echo "Review failed with status: fail"
+            exit 1
+          fi
