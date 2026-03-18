@@ -135,7 +135,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
 .pc-52w-lo{white-space:nowrap}.pc-52w-hi{white-space:nowrap}
 #volume-wrap{background:var(--surf);border:1px solid var(--border);border-top:none;border-radius:0 0 4px 4px;padding:4px 8px;flex-shrink:0}
 #rsi-wrap{background:var(--surf);border:1px solid var(--border);border-top:none;border-radius:0 0 4px 4px;padding:4px 8px;flex-shrink:0}
-#volume-wrap canvas,#rsi-wrap canvas,#macd-wrap canvas,#obv-wrap canvas{width:100% !important;height:100% !important}
+#volume-wrap canvas,#rsi-wrap canvas,#macd-wrap canvas,#obv-wrap canvas,#adx-wrap canvas{width:100% !important;height:100% !important}
 .ind-controls{display:flex;gap:4px;flex-wrap:wrap}
 .ind-btn{background:none;border:1px solid var(--border);border-radius:3px;color:var(--text3);cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 7px;transition:all 0.15s}
 .ind-btn:hover{color:var(--text);border-color:var(--border2)}.ind-btn.active{color:var(--accent);border-color:var(--accent);background:rgba(34,211,238,0.08)}
@@ -181,6 +181,11 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
 .news-lbl{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;flex-shrink:0}
 .news-link{color:var(--text2);text-decoration:none;border:1px solid var(--border);border-radius:3px;padding:2px 7px;transition:all 0.15s;white-space:nowrap}
 .news-link:hover{color:var(--accent);border-color:var(--accent)}
+.headline-item{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:3px 0;border-bottom:1px solid var(--border)}
+.headline-item:last-child{border-bottom:none}
+.headline-title{color:var(--text2);text-decoration:none;font-size:11px;flex:1;transition:color 0.15s;line-height:1.4}
+.headline-title:hover{color:var(--accent)}
+.headline-time{font-size:9px;color:var(--text3);flex-shrink:0;white-space:nowrap}
 .sector-tile{flex:1;min-width:60px;max-width:100px;border-radius:3px;padding:6px 8px;text-align:center;cursor:pointer;transition:filter 0.15s}
 .sector-tile:hover{filter:brightness(1.2)}
 .sector-tile .st-sym{font-size:11px;font-weight:700;letter-spacing:0.06em}
@@ -274,6 +279,13 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
     <div id="signals-bar" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     <div id="sector-heatmap" class="sector-map"></div>
     <div id="news-links-bar"></div>
+    <div id="news-headlines-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:8px 12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em">Headlines — <span id="headlines-sym"></span></span>
+        <button class="export-btn" onclick="renderNewsHeadlines()" style="font-size:10px;padding:2px 7px">Refresh</button>
+      </div>
+      <div id="news-headlines" style="display:flex;flex-direction:column;gap:5px"></div>
+    </div>
     <div id="chart-wrapper">
       <div id="chart-controls">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -305,6 +317,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
             <button class="ind-btn" data-ind="stoch" title="Stochastic Oscillator (14,3) — sub-chart">Stoch</button>
             <button class="ind-btn" data-ind="obv" title="On-Balance Volume trend — sub-chart">OBV</button>
             <button class="ind-btn" data-ind="fib" title="Fibonacci Retracement levels (38.2%, 50%, 61.8%) — price mode only">Fib</button>
+            <button class="ind-btn" data-ind="adx" title="ADX trend strength (14) — sub-chart. ADX>25=trending, +DI/-DI show direction">ADX</button>
           </div>
           <button class="export-btn" id="export-btn" title="Export all symbols as CSV">⬇ CSV</button>
           <button class="export-btn" id="snap-btn" title="Copy chart as PNG image">📷</button>
@@ -319,6 +332,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
     <div id="macd-wrap" style="height:80px;position:relative;display:none"><canvas id="macd-chart"></canvas></div>
     <div id="stoch-wrap" style="height:68px;position:relative;display:none"><canvas id="stoch-chart"></canvas></div>
     <div id="obv-wrap" style="height:68px;position:relative;display:none"><canvas id="obv-chart"></canvas></div>
+    <div id="adx-wrap" style="height:80px;position:relative;display:none"><canvas id="adx-chart"></canvas></div>
     <div id="perf-table-wrap" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;overflow-x:auto">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);padding:8px 12px">Performance vs Timeframe</div>
       <table id="perf-table" class="portfolio-table" style="min-width:500px"><thead><tr><th>Symbol</th><th>Today</th><th>1W</th><th>1M</th><th>3M</th><th>YTD</th><th>Trend</th></tr></thead><tbody id="perf-tbody"></tbody></table>
@@ -592,7 +606,7 @@ const SYMBOL_CFG={
 const YAHOO_RANGES={'1D':{interval:'5m',range:'1d'},'1W':{interval:'1h',range:'5d'},'1M':{interval:'1d',range:'1mo'},'3M':{interval:'1d',range:'3mo'},'YTD':{interval:'1d',range:'ytd'},'1Y':{interval:'1d',range:'1y'}};
 const RBH_RANGES={'1D':{interval:'5minute',span:'day'},'1W':{interval:'10minute',span:'week'},'1M':{interval:'day',span:'month'},'3M':{interval:'day',span:'3month'},'YTD':{interval:'day',span:'year'},'1Y':{interval:'day',span:'year'}};
 const CFG_VER=3;
-const CFG_DEF={_v:CFG_VER,source:'yahoo',corsProxy:'https://corsproxy.io/?',rbhToken:'',avKey:'',pollInterval:60,symbols:['SPY','USO','VIX'],tf:'1D',chartType:'line',priceMode:'indexed',indicators:{sma20:true,sma50:false,sma200:false,bb:false,volume:true,rsi:false,macd:false,stoch:false,obv:false,vwap:false,fib:false},alerts:[],portfolio:[]};
+const CFG_DEF={_v:CFG_VER,source:'yahoo',corsProxy:'https://corsproxy.io/?',rbhToken:'',avKey:'',pollInterval:60,symbols:['SPY','USO','VIX'],tf:'1D',chartType:'line',priceMode:'indexed',indicators:{sma20:true,sma50:false,sma200:false,bb:false,volume:true,rsi:false,macd:false,stoch:false,obv:false,vwap:false,fib:false,adx:false},alerts:[],portfolio:[]};
 let CFG;
 try{
   const _s=JSON.parse(localStorage.getItem('correlate-cfg')||'{}');
@@ -726,6 +740,37 @@ function calcATR(bars,period=14){
   atr[period-1]=sum/period;
   for(let i=period;i<bars.length;i++) atr[i]=(atr[i-1]*(period-1)+tr[i])/period;
   return atr;
+}
+function calcADX(bars,period=14){
+  // Returns {adx, plusDI, minusDI} arrays
+  if(bars.length<period+2) return bars.map(()=>({adx:null,plusDI:null,minusDI:null}));
+  const adx=new Array(bars.length).fill(null);
+  const pDI=new Array(bars.length).fill(null);
+  const mDI=new Array(bars.length).fill(null);
+  const tr=new Array(bars.length).fill(0);
+  const plusDM=new Array(bars.length).fill(0);
+  const minusDM=new Array(bars.length).fill(0);
+  for(let i=1;i<bars.length;i++){
+    const h=bars[i].high||bars[i].close,l=bars[i].low||bars[i].close;
+    const ph=bars[i-1].high||bars[i-1].close,pl=bars[i-1].low||bars[i-1].close,pc=bars[i-1].close;
+    tr[i]=Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc));
+    const upMove=h-ph,downMove=pl-l;
+    plusDM[i]=upMove>downMove&&upMove>0?upMove:0;
+    minusDM[i]=downMove>upMove&&downMove>0?downMove:0;
+  }
+  let atr=tr.slice(1,period+1).reduce((a,b)=>a+b,0);
+  let pDM=plusDM.slice(1,period+1).reduce((a,b)=>a+b,0);
+  let mDM=minusDM.slice(1,period+1).reduce((a,b)=>a+b,0);
+  pDI[period]=atr>0?100*pDM/atr:0;mDI[period]=atr>0?100*mDM/atr:0;
+  const dx=pDI[period]+mDI[period]>0?100*Math.abs(pDI[period]-mDI[period])/(pDI[period]+mDI[period]):0;
+  let adxSmooth=dx;adx[period]=null;
+  for(let i=period+1;i<bars.length;i++){
+    atr=atr-atr/period+tr[i];pDM=pDM-pDM/period+plusDM[i];mDM=mDM-mDM/period+minusDM[i];
+    pDI[i]=atr>0?100*pDM/atr:0;mDI[i]=atr>0?100*mDM/atr:0;
+    const dxi=pDI[i]+mDI[i]>0?100*Math.abs(pDI[i]-mDI[i])/(pDI[i]+mDI[i]):0;
+    adxSmooth=(adxSmooth*(period-1)+dxi)/period;adx[i]=adxSmooth;
+  }
+  return adx.map((_,i)=>({adx:adx[i],plusDI:pDI[i],minusDI:mDI[i]}));
 }
 function calcOBV(bars){
   let obv=0;
@@ -1058,7 +1103,7 @@ function buildOHLCChart(bars){
   });
 }
 function buildMainChart(){
-  if(CFG.chartType==='ohlc'){const bars=getFilteredBars(CFG.symbols[0],CFG.tf);buildOHLCChart(bars);buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();if(CFG.indicators.macd) buildMACDChart();if(CFG.indicators.stoch) buildStochChart();buildOBVChart();return;}
+  if(CFG.chartType==='ohlc'){const bars=getFilteredBars(CFG.symbols[0],CFG.tf);buildOHLCChart(bars);buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();if(CFG.indicators.macd) buildMACDChart();if(CFG.indicators.stoch) buildStochChart();buildOBVChart();buildADXChart();return;}
   dc('main');const canvas=document.getElementById('main-chart');if(!canvas) return;
   const tf=CFG.tf;const syms=CFG.symbols.filter(s=>S.data[s]?.bars?.length>=2);if(!syms.length) return;
   const firstBars=getFilteredBars(syms[0],tf);
@@ -1100,7 +1145,7 @@ function buildMainChart(){
   const yTitle=priceMode==='price'?'Price ($)':'Indexed (base=100)';
   const yFmt=priceMode==='price'?v=>'$'+(v>=100?v.toFixed(0):v.toFixed(2)):v=>v.toFixed(1);
   S.charts['main']=new Chart(canvas,{type:'line',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{backgroundColor:'#0d1520',borderColor:'#1a2535',borderWidth:1,callbacks:{label:ctx=>{const lbl=ctx.dataset.label;if(!lbl||lbl.startsWith('BB')) return null;if(lbl.startsWith('SMA')||lbl==='VWAP'||lbl.startsWith('BB')||lbl.startsWith('Fib')) return(lbl.startsWith('BB')||lbl.startsWith('Fib'))?null:` ${lbl}: $${ctx.parsed.y?.toFixed(2)}`;const bars=getFilteredBars(lbl,tf);const price=bars[ctx.dataIndex]?.close;return` ${lbl}: ${price!=null?'$'+(price>=100?price.toFixed(2):price.toFixed(3)):ctx.parsed.y.toFixed(2)}`;},title:ctx=>ctx[0].label}}},scales:{x:{grid:GRID,ticks:{color:'#64748b',maxTicksLimit:10}},y:{grid:GRID,ticks:{color:'#64748b',callback:yFmt},title:{display:true,text:yTitle,color:'#64748b'}}}}});
-  buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();if(CFG.indicators.macd) buildMACDChart();if(CFG.indicators.stoch) buildStochChart();buildOBVChart();
+  buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();if(CFG.indicators.macd) buildMACDChart();if(CFG.indicators.stoch) buildStochChart();buildOBVChart();buildADXChart();
 }
 function buildVolumeChart(){
   dc('volume');const wrap=document.getElementById('volume-wrap');const canvas=document.getElementById('volume-chart');
@@ -1134,6 +1179,24 @@ function buildOBVChart(){
   const labels=bars.map(b=>{const d=new Date(b.ts*1000);return CFG.tf==='1D'?d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false}):d.toLocaleDateString('en-US',{month:'numeric',day:'numeric'});});
   const obvSMA=calcSMA(obv,10);
   S.charts['obv']=new Chart(canvas,{type:'line',data:{labels,datasets:[{label:'OBV',data:obv.map(v=>+v.toFixed(0)),borderColor:'#a78bfa',borderWidth:1.5,pointRadius:0,tension:0.1,fill:false},{label:'OBV SMA10',data:obvSMA.map(v=>v==null?null:+v.toFixed(0)),borderColor:'rgba(167,139,250,0.4)',borderWidth:1,borderDash:[4,2],pointRadius:0,tension:0,fill:false,spanGaps:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#0d1520',borderColor:'#1a2535',borderWidth:1,filter:i=>i.dataset.label==='OBV',callbacks:{label:ctx=>{const v=ctx.parsed.y;return` OBV: ${v>=1e6?(v/1e6).toFixed(2)+'M':v>=1e3?(v/1e3).toFixed(1)+'K':v.toFixed(0)}`;}}}},scales:{x:{display:false,grid:{display:false}},y:{grid:{color:'#0d1726',drawBorder:false},ticks:{color:'#64748b',maxTicksLimit:3,callback:v=>v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':v}}}}});
+}
+function buildADXChart(){
+  dc('adx');const wrap=document.getElementById('adx-wrap');const canvas=document.getElementById('adx-chart');
+  if(!canvas) return;
+  wrap&&(wrap.style.display=CFG.indicators.adx?'block':'none');
+  if(!CFG.indicators.adx) return;
+  const sym=CFG.symbols[0];const bars=getFilteredBars(sym,CFG.tf);if(bars.length<20) return;
+  const adxData=calcADX(bars,14);
+  const labels=bars.map(b=>{const d=new Date(b.ts*1000);return CFG.tf==='1D'?d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false}):d.toLocaleDateString('en-US',{month:'numeric',day:'numeric'});});
+  const adxVals=adxData.map(x=>x.adx!=null?+x.adx.toFixed(2):null);
+  const pDIVals=adxData.map(x=>x.plusDI!=null?+x.plusDI.toFixed(2):null);
+  const mDIVals=adxData.map(x=>x.minusDI!=null?+x.minusDI.toFixed(2):null);
+  S.charts['adx']=new Chart(canvas,{type:'line',data:{labels,datasets:[
+    {label:'ADX',data:adxVals,borderColor:'#f59e0b',borderWidth:2,pointRadius:0,tension:0.1,fill:false,spanGaps:false},
+    {label:'+DI',data:pDIVals,borderColor:'#4ade80',borderWidth:1.5,borderDash:[],pointRadius:0,tension:0.1,fill:false,spanGaps:false},
+    {label:'-DI',data:mDIVals,borderColor:'#f87171',borderWidth:1.5,borderDash:[],pointRadius:0,tension:0.1,fill:false,spanGaps:false},
+    {label:'25',data:new Array(labels.length).fill(25),borderColor:'rgba(148,163,184,0.25)',borderWidth:1,borderDash:[4,3],pointRadius:0,fill:false},
+  ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{backgroundColor:'#0d1520',borderColor:'#1a2535',borderWidth:1,callbacks:{label:ctx=>{const map={ADX:'ADX','+DI':'+DI','-DI':'-DI','25':null};if(!map[ctx.dataset.label]) return null;return` ${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1):'N/A'}`;}}}},scales:{x:{display:false,grid:{display:false}},y:{grid:{color:'#0d1726',drawBorder:false},ticks:{color:'#64748b',maxTicksLimit:3},min:0,max:60}}}});
 }
 function buildScatterChart(){
   dc('scatter');const canvas=document.getElementById('scatter-chart');if(!canvas) return;
@@ -1365,7 +1428,7 @@ function updateRegimeBar(){
   }
   bar.innerHTML=items.length?items.join('<span style="color:var(--border2);margin:0 2px">|</span>'):'<span style="color:var(--text3);font-size:10px">Loading market data…</span>';
 }
-function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();}if(S.activeTab==='correlate') updateCorrStats();if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();}updateCorrSelectors();updateWatchlistChips();}
+function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate') updateCorrStats();if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();}updateCorrSelectors();updateWatchlistChips();}
 function startPolling(){stopPolling();if(CFG.pollInterval<=0||CFG.source==='demo') return;S.pollTimer=setInterval(()=>fetchAllSymbols(),CFG.pollInterval*1000);}
 function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
 function startDemoTick(){stopDemoTick();S.demoTicker=setInterval(tickDemoData,10000);}
@@ -1696,6 +1759,39 @@ function renderNewsLinks(){
     {label:'Economic Cal',href:'https://finance.yahoo.com/calendar/economic/'},
   ].map(l=>`<a class="news-link" href="${l.href}" target="_blank" rel="noopener">${l.label}</a>`).join('');
   el.innerHTML=`<span class="news-lbl">Research</span>${links}${extras}`;
+}
+// === NEWS HEADLINES via RSS ===
+const newsCache={};
+async function fetchHeadlines(sym){
+  if(CFG.source==='demo') return null;
+  if(newsCache[sym]&&Date.now()-newsCache[sym].ts<5*60000) return newsCache[sym].items;
+  try{
+    const rssUrl=`https://feeds.finance.yahoo.com/rss/2.0/headline?s=${sym}&region=US&lang=en-US`;
+    const proxyFull=CFG.corsProxy?CFG.corsProxy+encodeURIComponent(rssUrl):rssUrl;
+    const res=await fetch(proxyFull,{signal:AbortSignal.timeout?AbortSignal.timeout(8000):undefined});
+    if(!res.ok) return null;
+    const text=await res.text();
+    const parser=new DOMParser();const doc=parser.parseFromString(text,'text/xml');
+    const items=[...doc.querySelectorAll('item')].slice(0,5).map(item=>({
+      title:item.querySelector('title')?.textContent||'',
+      link:item.querySelector('link')?.textContent||'#',
+      pubDate:item.querySelector('pubDate')?.textContent||''
+    }));
+    newsCache[sym]={ts:Date.now(),items};
+    return items;
+  }catch{return null;}
+}
+async function renderNewsHeadlines(){
+  const el=document.getElementById('news-headlines');if(!el) return;
+  const sym=CFG.symbols[0];if(!sym) return;
+  el.innerHTML=`<span style="color:var(--text3);font-size:10px">Loading headlines for ${sym}…</span>`;
+  const items=await fetchHeadlines(sym);
+  if(!items||!items.length){el.innerHTML=`<span style="color:var(--text3);font-size:10px">No headlines available. <a class="news-link" href="https://finance.yahoo.com/quote/${sym}/news/" target="_blank" rel="noopener">View on Yahoo</a></span>`;return;}
+  el.innerHTML=items.map(item=>{
+    const d=item.pubDate?new Date(item.pubDate):null;
+    const timeStr=d&&!isNaN(d)?d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}):'';
+    return`<div class="headline-item"><a href="${item.link}" target="_blank" rel="noopener" class="headline-title">${escHtml(item.title)}</a><span class="headline-time">${timeStr}</span></div>`;
+  }).join('');
 }
 const SECTOR_SYMS=['SPY','QQQ','DIA','IWM','XLK','XLF','XLE','XLV','XLC','XLI','XLY','XLP','XLU','XLRE','GLD','SLV','USO','TLT','HYG'];
 function demoSectorPct(sym){
@@ -2100,7 +2196,7 @@ function init(){
   });
   updateClock();setInterval(updateClock,15000);
   if(CFG.source==='demo'){initDemoData();updateUI();startDemoTick();}
-  else{initDemoData();updateUI();fetchAllSymbols(CFG.tf).then(()=>{startPolling();setTimeout(fetchSectorData,1000);});}
+  else{initDemoData();updateUI();fetchAllSymbols(CFG.tf).then(()=>{startPolling();setTimeout(fetchSectorData,1000);setTimeout(renderNewsHeadlines,2000);});}
 }
 // === FEAR & GREED COMPOSITE ===
 function computeFearGreed(){
