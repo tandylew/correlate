@@ -372,6 +372,16 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       <div id="divergence-content" style="font-size:12px;color:var(--text2)">Select symbols and view correlation to see divergence signals.</div>
       <div id="pair-signal" style="margin-top:10px;font-size:11px"></div>
     </div>
+    <div id="beta-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Rolling Beta vs SPY — <span id="beta-sym-label"></span></div>
+      <div id="beta-stats" style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px"></div>
+      <div style="height:120px;position:relative"><canvas id="beta-chart"></canvas></div>
+    </div>
+    <div id="return-dist-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Return Distribution — <span id="rdist-sym-label"></span></div>
+      <div style="height:120px;position:relative"><canvas id="rdist-chart"></canvas></div>
+      <div id="rdist-stats" style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:11px"></div>
+    </div>
   </section>
   <section id="tab-portfolio" class="main-tab">
     <div class="p-summary" id="portfolio-summary"></div>
@@ -1236,7 +1246,7 @@ function updateCorrStats(){
     const div=qA?.changePct!=null&&qB?.changePct!=null?((qA.changePct-qB.changePct>=0?'+':'')+(qA.changePct-qB.changePct).toFixed(2)+'%'):'—';
     statsEl.innerHTML=[{v:r.toFixed(3),l:'Pearson r'},{v:(r*r).toFixed(3),l:'R²'},{v:isNaN(beta)?'—':beta.toFixed(3),l:`β (${corrA}/${corrB})`},{v:n,l:`Bars (${CORR_WINDOW}-bar)`},{v:div,l:'Divergence'}].map(({v,l})=>`<div class="corr-stat"><div class="cs-val">${v}</div><div class="cs-lbl">${l}</div></div>`).join('');
   }
-  buildScatterChart();buildRollingCorrChart();buildRollingVolChart();buildCorrelationMatrix();updateDivergencePanel();
+  buildScatterChart();buildRollingCorrChart();buildRollingVolChart();buildCorrelationMatrix();updateDivergencePanel();updateBetaPanel();
 }
 function setStatus(status){
   S.status=status;const dot=document.getElementById('live-dot');const text=document.getElementById('status-text');if(!dot||!text) return;
@@ -1557,6 +1567,93 @@ function updateDivergencePanel(){
       pairEl.innerHTML=`<div style="display:flex;align-items:center;gap:8px"><span style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em">Pair Signal</span><span style="color:var(--${sigCls})">${signal}</span></div><div style="margin-top:4px;font-size:10px;color:var(--text3)">Spread ratio ${last.toFixed(4)} vs mean ${mean.toFixed(4)} (${std.toFixed(4)}σ)</div>`;
     }
   }
+}
+let betaChartInst=null,rdistChartInst=null;
+function updateBetaPanel(){
+  const sym=S.corrA;const spy='SPY';
+  const labelEl=document.getElementById('beta-sym-label');if(labelEl) labelEl.textContent=sym;
+  const rdLbl=document.getElementById('rdist-sym-label');if(rdLbl) rdLbl.textContent=sym;
+  const bSym=getFilteredBars(sym,CFG.tf);const bSpy=getFilteredBars(spy,CFG.tf);
+  // Compute rolling beta (30-bar window)
+  const BETA_WIN=30;
+  if(bSym.length<BETA_WIN+2||bSpy.length<BETA_WIN+2){
+    const statsEl=document.getElementById('beta-stats');
+    if(statsEl) statsEl.innerHTML='<span style="color:var(--text3);font-size:11px">Need at least 32 bars of data for rolling beta.</span>';
+    updateReturnDist(sym,bSym);return;
+  }
+  const rSym=pctReturns(bSym.map(b=>b.close));
+  const rSpy=pctReturns(bSpy.map(b=>b.close));
+  // Align by timestamp
+  const aligned=[];
+  bSym.forEach((b,i)=>{const spyIdx=bSpy.findIndex(x=>x.ts===b.ts);if(spyIdx>=0&&i>0&&spyIdx>0) aligned.push({symR:rSym[i],spyR:rSpy[spyIdx]});});
+  if(aligned.length<BETA_WIN+2){updateReturnDist(sym,bSym);return;}
+  // Rolling beta
+  const betas=[];const labels=[];
+  for(let i=BETA_WIN;i<aligned.length;i++){
+    const window=aligned.slice(i-BETA_WIN,i);
+    const xs=window.map(x=>x.spyR),ys=window.map(x=>x.symR);
+    const mx=xs.reduce((a,b)=>a+b,0)/xs.length,my=ys.reduce((a,b)=>a+b,0)/ys.length;
+    let cov=0,varX=0;
+    for(let j=0;j<xs.length;j++){cov+=(xs[j]-mx)*(ys[j]-my);varX+=(xs[j]-mx)**2;}
+    betas.push(varX>0?cov/varX:0);
+    labels.push(i);
+  }
+  const curBeta=betas[betas.length-1]??0;
+  const avgBeta=betas.reduce((a,b)=>a+b,0)/betas.length;
+  // Full-period alpha (CAPM)
+  const allXs=aligned.map(x=>x.spyR),allYs=aligned.map(x=>x.symR);
+  const mx=allXs.reduce((a,b)=>a+b,0)/allXs.length,my=allYs.reduce((a,b)=>a+b,0)/allYs.length;
+  let cov=0,varX=0;for(let j=0;j<allXs.length;j++){cov+=(allXs[j]-mx)*(allYs[j]-my);varX+=(allXs[j]-mx)**2;}
+  const fullBeta=varX>0?cov/varX:0;
+  const alpha=(my-fullBeta*mx)*252; // annualized
+  const statsEl=document.getElementById('beta-stats');
+  if(statsEl) statsEl.innerHTML=[
+    {lbl:'Current β',val:curBeta.toFixed(3),cls:curBeta>1?'neg':curBeta<0?'warn':'pos'},
+    {lbl:'Avg β (period)',val:avgBeta.toFixed(3),cls:''},
+    {lbl:'Full β',val:fullBeta.toFixed(3),cls:''},
+    {lbl:'Alpha (ann.)',val:(alpha>=0?'+':'')+alpha.toFixed(2)+'%',cls:alpha>=0?'pos':'neg'},
+  ].map(x=>`<div><span style="color:var(--text3);font-size:9px;text-transform:uppercase;letter-spacing:0.06em;display:block">${x.lbl}</span><span style="font-weight:700;font-variant-numeric:tabular-nums" class="${x.cls}">${x.val}</span></div>`).join('');
+  // Draw rolling beta chart
+  const canvas=document.getElementById('beta-chart');if(!canvas) return;
+  if(betaChartInst){betaChartInst.destroy();betaChartInst=null;}
+  betaChartInst=new Chart(canvas,{type:'line',data:{labels,datasets:[
+    {data:betas,borderColor:'rgba(99,102,241,0.8)',borderWidth:1.5,fill:false,pointRadius:0,tension:0.3,label:'Beta'},
+    {data:new Array(betas.length).fill(1),borderColor:'rgba(148,163,184,0.3)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false,label:'β=1'},
+    {data:new Array(betas.length).fill(0),borderColor:'rgba(148,163,184,0.2)',borderWidth:1,borderDash:[2,4],pointRadius:0,fill:false,label:'β=0'},
+  ]},options:{animation:false,plugins:{legend:{display:false},tooltip:{enabled:false}},scales:{x:{display:false},y:{ticks:{font:{family:'JetBrains Mono',size:9},color:'rgba(148,163,184,0.7)',maxTicksLimit:4},grid:{color:'rgba(148,163,184,0.08)'},border:{color:'transparent'}}},responsive:true,maintainAspectRatio:false}});
+  updateReturnDist(sym,bSym);
+}
+function updateReturnDist(sym,bars){
+  const canvas=document.getElementById('rdist-chart');const statsEl=document.getElementById('rdist-stats');
+  if(!canvas) return;
+  if(!bars||bars.length<10){if(statsEl) statsEl.innerHTML='';return;}
+  const closes=bars.map(b=>b.close);
+  const returns=pctReturns(closes).filter(v=>!isNaN(v));
+  if(returns.length<5) return;
+  // Histogram with 20 bins
+  const BINS=20;
+  const minR=Math.min(...returns),maxR=Math.max(...returns);
+  const binSize=(maxR-minR)/BINS||0.001;
+  const hist=new Array(BINS).fill(0);
+  returns.forEach(r=>{const idx=Math.min(BINS-1,Math.floor((r-minR)/binSize));hist[idx]++;});
+  const binLabels=new Array(BINS).fill(0).map((_,i)=>((minR+i*binSize)*100).toFixed(2)+'%');
+  // Stats
+  const mean=returns.reduce((a,b)=>a+b,0)/returns.length;
+  const std=Math.sqrt(returns.reduce((s,v)=>s+(v-mean)**2,0)/returns.length);
+  const sortedR=[...returns].sort((a,b)=>a-b);
+  const varIdx=Math.floor(sortedR.length*0.05);
+  const var95=sortedR[varIdx]??0;
+  const skew=returns.reduce((s,v)=>s+((v-mean)/std)**3,0)/returns.length;
+  const kurt=returns.reduce((s,v)=>s+((v-mean)/std)**4,0)/returns.length-3;
+  if(rdistChartInst){rdistChartInst.destroy();rdistChartInst=null;}
+  rdistChartInst=new Chart(canvas,{type:'bar',data:{labels:binLabels,datasets:[{data:hist,backgroundColor:hist.map((_,i)=>{const binMid=minR+i*binSize+binSize/2;return binMid>=0?'rgba(74,222,128,0.4)':'rgba(248,113,113,0.4)';}),borderColor:'transparent',borderRadius:2,label:'Count'}]},options:{animation:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`Count: ${ctx.raw}`}}},scales:{x:{display:false},y:{ticks:{font:{family:'JetBrains Mono',size:9},color:'rgba(148,163,184,0.7)',maxTicksLimit:3},grid:{color:'rgba(148,163,184,0.08)'},border:{color:'transparent'}}},responsive:true,maintainAspectRatio:false}});
+  if(statsEl) statsEl.innerHTML=[
+    {lbl:'Mean',val:(mean*100>=0?'+':'')+( mean*100).toFixed(3)+'%',cls:mean>=0?'pos':'neg'},
+    {lbl:'Std Dev',val:(std*100).toFixed(3)+'%',cls:''},
+    {lbl:'VaR 95%',val:(var95*100).toFixed(3)+'%',cls:'neg'},
+    {lbl:'Skew',val:skew.toFixed(3),cls:skew>0?'pos':'neg'},
+    {lbl:'Kurtosis',val:kurt.toFixed(3),cls:''},
+  ].map(x=>`<div><span style="color:var(--text3);font-size:9px;text-transform:uppercase;letter-spacing:0.06em;display:block">${x.lbl}</span><span style="font-weight:700;font-variant-numeric:tabular-nums" class="${x.cls}">${x.val}</span></div>`).join('');
 }
 function updatePerfTable(){
   const tbody=document.getElementById('perf-tbody');if(!tbody) return;
