@@ -342,6 +342,8 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
             <button class="ind-btn" data-ind="roc" title="Rate of Change (10) — sub-chart. Momentum oscillator">ROC</button>
             <button class="ind-btn" data-ind="chop" title="Choppiness Index (14) — sub-chart. >61.8=choppy/ranging, &lt;38.2=trending">CHOP</button>
             <button class="ind-btn" data-ind="mfi" title="Money Flow Index (14) — volume-weighted RSI. >80 overbought, &lt;20 oversold">MFI</button>
+            <button class="ind-btn" data-ind="psar" title="Parabolic SAR — trend-following dots above/below price for stop placement">PSAR</button>
+            <button class="ind-btn" data-ind="kc" title="Keltner Channels (20,2×ATR) — similar to BB but ATR-based, price mode only">KC</button>
           </div>
           <button class="export-btn" id="export-btn" title="Export all symbols as CSV">⬇ CSV</button>
           <button class="export-btn" id="snap-btn" title="Copy chart as PNG image">📷</button>
@@ -961,7 +963,7 @@ const SYMBOL_CFG={
 const YAHOO_RANGES={'1D':{interval:'5m',range:'1d'},'1W':{interval:'1h',range:'5d'},'1M':{interval:'1d',range:'1mo'},'3M':{interval:'1d',range:'3mo'},'YTD':{interval:'1d',range:'ytd'},'1Y':{interval:'1d',range:'1y'}};
 const RBH_RANGES={'1D':{interval:'5minute',span:'day'},'1W':{interval:'10minute',span:'week'},'1M':{interval:'day',span:'month'},'3M':{interval:'day',span:'3month'},'YTD':{interval:'day',span:'year'},'1Y':{interval:'day',span:'year'}};
 const CFG_VER=3;
-const CFG_DEF={_v:CFG_VER,source:'yahoo',corsProxy:'https://corsproxy.io/?',rbhToken:'',avKey:'',pollInterval:60,symbols:['SPY','USO','VIX'],tf:'1D',chartType:'line',priceMode:'indexed',indicators:{sma20:true,sma50:false,sma200:false,bb:false,volume:true,rsi:false,macd:false,stoch:false,obv:false,vwap:false,fib:false,adx:false,ichimoku:false,cci:false,williams:false,roc:false,chop:false,mfi:false},alerts:[],portfolio:[]};
+const CFG_DEF={_v:CFG_VER,source:'yahoo',corsProxy:'https://corsproxy.io/?',rbhToken:'',avKey:'',pollInterval:60,symbols:['SPY','USO','VIX'],tf:'1D',chartType:'line',priceMode:'indexed',indicators:{sma20:true,sma50:false,sma200:false,bb:false,volume:true,rsi:false,macd:false,stoch:false,obv:false,vwap:false,fib:false,adx:false,ichimoku:false,cci:false,williams:false,roc:false,chop:false,mfi:false,psar:false,kc:false},alerts:[],portfolio:[]};
 let CFG;
 try{
   const _s=JSON.parse(localStorage.getItem('correlate-cfg')||'{}');
@@ -1083,6 +1085,42 @@ function calcMACD(closes,fast=12,slow=26,signal=9){
   const hist=macd.map((v,i)=>v!=null&&sig[i]!=null?v-sig[i]:null);
   return{macd,signal:sig,histogram:hist};
 }
+function calcParabolicSAR(bars,iAF=0.02,maxAF=0.2){
+  const n=bars.length;const sar=new Array(n).fill(null);
+  if(n<3) return sar;
+  let bull=true;let af=iAF;let ep=bars[0].high;let s=bars[0].low;
+  sar[0]=s;
+  for(let i=1;i<n;i++){
+    const b=bars[i];const prev=bars[i-1];
+    if(bull){
+      s=s+af*(ep-s);
+      s=Math.min(s,prev.low,i>1?bars[i-2].low:prev.low);
+      if(b.low<s){bull=false;s=ep;ep=b.low;af=iAF;}
+      else{if(b.high>ep){ep=b.high;af=Math.min(af+iAF,maxAF);}}
+    } else {
+      s=s-af*(s-ep);
+      s=Math.max(s,prev.high,i>1?bars[i-2].high:prev.high);
+      if(b.high>s){bull=true;s=ep;ep=b.high;af=iAF;}
+      else{if(b.low<ep){ep=b.low;af=Math.min(af+iAF,maxAF);}}
+    }
+    sar[i]=s;
+  }
+  return sar;
+}
+
+function calcKeltnerChannels(bars,emaPeriod=20,atrMult=2){
+  const n=bars.length;const upper=new Array(n).fill(null);const mid=new Array(n).fill(null);const lower=new Array(n).fill(null);
+  if(n<emaPeriod+1) return{upper,mid,lower};
+  const closes=bars.map(b=>b.close);
+  const emaArr=calcEMA(closes,emaPeriod);
+  const atrArr=calcATR(bars,emaPeriod);
+  for(let i=emaPeriod;i<n;i++){
+    const e=emaArr[i];const a=atrArr[i];
+    if(e&&a){mid[i]=e;upper[i]=e+atrMult*a;lower[i]=e-atrMult*a;}
+  }
+  return{upper,mid,lower};
+}
+
 function calcIchimoku(bars,tenkan=9,kijun=26,senkou=52){
   // Returns arrays: tenkanSen, kijunSen, senkouA, senkouB, chikou
   const n=bars.length;
@@ -1584,6 +1622,24 @@ function buildMainChart(){
         datasets.push({label:'Kijun',data:ich.kj.map(v=>v==null?null:+v.toFixed(4)),borderColor:'rgba(59,130,246,0.85)',borderWidth:1.5,pointRadius:0,fill:false,spanGaps:false,tension:0});
         datasets.push({label:'Senkou A',data:ich.sA.map(v=>v==null?null:+v.toFixed(4)),borderColor:'rgba(74,222,128,0.5)',borderWidth:1,fill:'+1',backgroundColor:'rgba(74,222,128,0.06)',pointRadius:0,spanGaps:false,tension:0});
         datasets.push({label:'Senkou B',data:ich.sB.map(v=>v==null?null:+v.toFixed(4)),borderColor:'rgba(248,113,113,0.5)',borderWidth:1,fill:false,backgroundColor:'rgba(248,113,113,0.06)',pointRadius:0,spanGaps:false,tension:0});
+      }
+    }
+    // Parabolic SAR
+    if(CFG.indicators.psar&&priceMode==='price'&&syms.length===1){
+      const sym0=syms[0];const psarBars=getFilteredBars(sym0,tf);
+      if(psarBars.length>=10){
+        const psarArr=calcParabolicSAR(psarBars);
+        datasets.push({label:'PSAR',data:psarArr.map(v=>v==null?null:+v.toFixed(4)),borderColor:'rgba(0,0,0,0)',pointRadius:3,pointBackgroundColor:psarArr.map((v,i)=>v==null?'transparent':v<(psarBars[i]?.close||0)?'rgba(74,222,128,0.85)':'rgba(248,113,113,0.85)'),showLine:false,fill:false,spanGaps:false});
+      }
+    }
+    // Keltner Channels
+    if(CFG.indicators.kc&&priceMode==='price'&&syms.length===1){
+      const sym0=syms[0];const kcBars=getFilteredBars(sym0,tf);
+      if(kcBars.length>=22){
+        const kc=calcKeltnerChannels(kcBars);
+        datasets.push({label:'KC Upper',data:kc.upper.map(v=>v==null?null:+v.toFixed(4)),borderColor:'rgba(251,146,60,0.4)',borderWidth:1,borderDash:[3,3],pointRadius:0,fill:false,spanGaps:false,tension:0});
+        datasets.push({label:'KC Mid',data:kc.mid.map(v=>v==null?null:+v.toFixed(4)),borderColor:'rgba(251,146,60,0.6)',borderWidth:1,pointRadius:0,fill:false,spanGaps:false,tension:0});
+        datasets.push({label:'KC Lower',data:kc.lower.map(v=>v==null?null:+v.toFixed(4)),borderColor:'rgba(251,146,60,0.4)',borderWidth:1,borderDash:[3,3],fill:'-2',backgroundColor:'rgba(251,146,60,0.04)',pointRadius:0,spanGaps:false,tension:0});
       }
     }
   }
