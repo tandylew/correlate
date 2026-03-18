@@ -598,6 +598,17 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       </div>
       <div id="bs-result" style="font-size:12px;color:var(--text2)"></div>
     </div>
+    <div id="options-chain-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3)">Options Chain — <span id="chain-sym-label"></span></span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <label style="font-size:10px;color:var(--text3)">IV %<input id="chain-iv" type="number" value="20" min="1" max="500" step="0.5" style="background:var(--surf2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 6px;width:60px;margin-left:4px"></label>
+          <label style="font-size:10px;color:var(--text3)">DTE<input id="chain-dte" type="number" value="30" min="1" max="365" style="background:var(--surf2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 6px;width:55px;margin-left:4px"></label>
+          <button class="btn" onclick="buildOptionsChain()" style="font-size:10px;padding:3px 8px">Generate</button>
+        </div>
+      </div>
+      <div id="options-chain-table" style="overflow-x:auto"></div>
+    </div>
     <div id="stress-test-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:10px">Portfolio Stress Test — Scenario Analysis</div>
       <div id="stress-test-results"></div>
@@ -3712,6 +3723,51 @@ function renderSpreadPanel(){
   if(statsEl) statsEl.innerHTML=`<span style="color:var(--text3)">Current ratio:</span><strong style="color:var(--text)">${cur.toFixed(4)}</strong><span style="color:var(--text3)">Mean:</span><strong style="color:var(--text)">${mean.toFixed(4)}</strong><span style="color:var(--text3)">Z-Score:</span><strong style="${Math.abs(zScore)>2?'color:var(--warn)':'color:var(--text)'}">${zScore.toFixed(2)}σ</strong><span style="color:var(--text3)">${Math.abs(zScore)>2?(zScore>0?'⚠ Stretched high':'⚠ Stretched low'):''}</span>`;
   const upperBand=ratios.map(()=>mean+2*std);const lowerBand=ratios.map(()=>mean-2*std);const meanBand=ratios.map(()=>mean);
   spreadChart=new Chart(canvas,{type:'line',data:{labels,datasets:[{label:`${corrA}/${corrB}`,data:ratios,borderColor:'rgba(59,130,246,0.85)',borderWidth:1.5,pointRadius:0,fill:false,tension:0.1},{label:'+2σ',data:upperBand,borderColor:'rgba(248,113,113,0.5)',borderWidth:1,borderDash:[3,2],pointRadius:0,fill:false},{label:'Mean',data:meanBand,borderColor:'rgba(148,163,184,0.4)',borderWidth:1,borderDash:[2,2],pointRadius:0,fill:false},{label:'-2σ',data:lowerBand,borderColor:'rgba(74,222,128,0.5)',borderWidth:1,borderDash:[3,2],pointRadius:0,fill:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(4)}`}}},scales:{x:{grid:GRID,ticks:{color:'#64748b',maxTicksLimit:8}},y:{grid:GRID,ticks:{color:'#64748b',callback:v=>v.toFixed(3)}}}}});
+}
+
+// === OPTIONS CHAIN ===
+function buildOptionsChain(){
+  const el=document.getElementById('options-chain-table');const lbl=document.getElementById('chain-sym-label');if(!el) return;
+  const sym=document.getElementById('bs-sym')?.value||CFG.symbols[0];
+  if(lbl) lbl.textContent=sym;
+  const iv=parseFloat(document.getElementById('chain-iv')?.value||20)/100;
+  const dte=parseFloat(document.getElementById('chain-dte')?.value||30);
+  const rf=0.0525;const T=dte/365;
+  const spot=S.data[sym]?.quote?.price;
+  if(!spot){el.innerHTML='<span style="color:var(--text3);font-size:11px">Load price data first.</span>';return;}
+  // Generate strikes: 10 OTM calls + ATM + 10 OTM puts, 2% spacing
+  const strikes=[];const step=Math.round(spot*0.02*2)/2||1;// ~2% steps
+  for(let i=-10;i<=10;i++) strikes.push(Math.round((spot+i*step)*100)/100);
+  const rows=strikes.map(K=>{
+    const call=blackScholes(spot,K,T,rf,iv,'call');
+    const put=blackScholes(spot,K,T,rf,iv,'put');
+    const isATM=Math.abs(K-spot)/spot<0.01;
+    return{K,call,put,isATM};
+  });
+  const hdr=(t)=>`<th style="padding:4px 8px;color:var(--text3);font-weight:500;font-size:10px;text-align:right">${t}</th>`;
+  el.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:10px">
+    <thead><tr style="border-bottom:1px solid var(--border)">
+      ${['Call $','Δ','Γ','Θ','Strike','Put $','Δ','Γ','Θ'].map(hdr).join('')}
+    </tr></thead>
+    <tbody>${rows.map(r=>{
+      const atm=r.isATM;
+      const bg=atm?'background:rgba(251,191,36,0.08);':'';
+      const kStyle=`font-weight:${atm?700:400};color:${atm?'var(--warn)':spot>r.K?'var(--pos)':'var(--neg)'}`;
+      const fmt=(v)=>v.toFixed(3);const fmtD=(v)=>v.toFixed(3);
+      return`<tr style="border-bottom:1px solid var(--border);${bg}">
+        <td style="text-align:right;padding:3px 8px;color:var(--pos)">${fmt(r.call.price)}</td>
+        <td style="text-align:right;padding:3px 8px;color:var(--text3)">${fmtD(r.call.delta)}</td>
+        <td style="text-align:right;padding:3px 8px;color:var(--text3)">${r.call.gamma.toFixed(4)}</td>
+        <td style="text-align:right;padding:3px 8px;color:var(--neg)">${r.call.theta.toFixed(3)}</td>
+        <td style="text-align:center;padding:3px 10px;${kStyle}">$${r.K.toFixed(2)}</td>
+        <td style="text-align:right;padding:3px 8px;color:var(--neg)">${fmt(r.put.price)}</td>
+        <td style="text-align:right;padding:3px 8px;color:var(--text3)">${fmtD(r.put.delta)}</td>
+        <td style="text-align:right;padding:3px 8px;color:var(--text3)">${r.put.gamma.toFixed(4)}</td>
+        <td style="text-align:right;padding:3px 8px;color:var(--neg)">${r.put.theta.toFixed(3)}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>
+  <div style="margin-top:6px;font-size:10px;color:var(--text3)">Spot: $${spot.toFixed(2)} | IV: ${(iv*100).toFixed(1)}% | DTE: ${dte} | r: ${(rf*100).toFixed(2)}% | Yellow = ATM</div>`;
 }
 
 // === BLACK-SCHOLES OPTIONS PRICER ===
