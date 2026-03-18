@@ -549,6 +549,10 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       <canvas id="corr-network-canvas" style="width:100%;height:200px;display:block"></canvas>
       <div id="corr-network-legend" style="display:flex;gap:12px;margin-top:6px;font-size:10px;flex-wrap:wrap"></div>
     </div>
+    <div id="corr-percentile-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:6px">Correlation Regime — A vs B (historical distribution)</div>
+      <div id="corr-percentile-content" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center"></div>
+    </div>
   </section>
   <section id="tab-portfolio" class="main-tab">
     <div class="p-summary" id="portfolio-summary"></div>
@@ -1818,7 +1822,7 @@ function updateRegimeBar(){
   }
   bar.innerHTML=items.length?items.join('<span style="color:var(--border2);margin:0 2px">|</span>'):'<span style="color:var(--text3);font-size:10px">Loading market data…</span>';
 }
-function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderLinRegPanel();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();renderTradeIdeas();renderTrailingStops();renderSymCompare();renderVolumeSpikes();renderMeanRevScores();renderRegimeDetail();renderCandlePatterns();renderIVRank();renderOrderFlow();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();}if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();renderPortCorr();renderRebalanceTargets();}updateCorrSelectors();updateWatchlistChips();}
+function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderLinRegPanel();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();renderTradeIdeas();renderTrailingStops();renderSymCompare();renderVolumeSpikes();renderMeanRevScores();renderRegimeDetail();renderCandlePatterns();renderIVRank();renderOrderFlow();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();renderCorrPercentile();}if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();renderPortCorr();renderRebalanceTargets();}updateCorrSelectors();updateWatchlistChips();}
 function startPolling(){stopPolling();if(CFG.pollInterval<=0||CFG.source==='demo') return;S.pollTimer=setInterval(()=>fetchAllSymbols(),CFG.pollInterval*1000);}
 function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
 function startDemoTick(){stopDemoTick();S.demoTicker=setInterval(tickDemoData,10000);}
@@ -1827,7 +1831,7 @@ function switchTab(tab){
   S.activeTab=tab;document.querySelectorAll('.main-tab').forEach(el=>el.classList.remove('active'));document.querySelectorAll('.nav-btn').forEach(el=>el.classList.remove('active'));
   const panel=document.getElementById('tab-'+tab);const btn=document.querySelector(`.nav-btn[data-tab="${tab}"]`);
   if(panel) panel.classList.add('active');if(btn) btn.classList.add('active');
-  if(tab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();if(CFG.source!=='demo'&&Object.keys(yieldCache).length===0) setTimeout(fetchYieldCurve,200);}
+  if(tab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();renderCorrPercentile();if(CFG.source!=='demo'&&Object.keys(yieldCache).length===0) setTimeout(fetchYieldCurve,200);}
   if(tab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();renderTradeIdeas();renderTrailingStops();renderSymCompare();renderVolumeSpikes();renderMeanRevScores();renderRegimeDetail();renderCandlePatterns();renderIVRank();renderOrderFlow();}
   if(tab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();renderPortCorr();renderRebalanceTargets();}
 }
@@ -4207,6 +4211,70 @@ function renderIVRank(){
       <div style="font-size:9px;color:${r.rankColor};text-align:right;margin-top:2px">${r.rankLabel}</div>
     </div>
   `).join('');
+}
+
+// === CORRELATION REGIME / PERCENTILE PANEL ===
+let corrPctChartInst=null;
+function renderCorrPercentile(){
+  const el=document.getElementById('corr-percentile-content');if(!el) return;
+  const symA=S.corrA||CFG.symbols[0];const symB=S.corrB||CFG.symbols[1];
+  if(!symA||!symB){el.innerHTML='<span style="font-size:11px;color:var(--text3)">Select two symbols</span>';return;}
+  const bA=getFilteredBars(symA,CFG.tf);const bB=getFilteredBars(symB,CFG.tf);
+  if(bA.length<40||bB.length<40){el.innerHTML='<span style="font-size:11px;color:var(--text3)">Need ≥40 bars</span>';return;}
+  const rA=pctReturns(bA.map(b=>b.close));const rB=pctReturns(bB.map(b=>b.close));
+  const WIN=20;
+  // Align by timestamp
+  const aligned=[];
+  bA.forEach((b,i)=>{const bi=bB.findIndex(x=>x.ts===b.ts);if(bi>=0&&i>0&&bi>0) aligned.push({rA:rA[i],rB:rB[bi]});});
+  if(aligned.length<WIN+2){el.innerHTML='<span style="font-size:11px;color:var(--text3)">Insufficient aligned data</span>';return;}
+  const rollCorrs=[];
+  for(let i=WIN;i<=aligned.length;i++){
+    const w=aligned.slice(i-WIN,i);
+    const xs=w.map(x=>x.rA),ys=w.map(x=>x.rB);
+    rollCorrs.push(pearson(xs,ys));
+  }
+  const cur=rollCorrs[rollCorrs.length-1];
+  const sorted=[...rollCorrs].sort((a,b)=>a-b);
+  const rank=sorted.findIndex(v=>v>=cur);
+  const pct=Math.round(rank/sorted.length*100);
+  const mn=sorted[0];const mx=sorted[sorted.length-1];
+  const med=sorted[Math.floor(sorted.length/2)];
+  const corrColor=cur>0.7?'var(--pos)':cur>0.3?'var(--warn)':cur<-0.3?'var(--neg)':'var(--text2)';
+  const regime=cur>0.7?'Highly Correlated':cur>0.3?'Moderately Correlated':cur<-0.7?'Highly Anti-Correlated':cur<-0.3?'Moderately Anti-Correlated':'Uncorrelated';
+  el.innerHTML=`
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 12px;min-width:130px;text-align:center">
+      <div style="font-size:9px;color:var(--text3);margin-bottom:2px">Current r (${WIN}-bar)</div>
+      <div style="font-size:22px;font-weight:700;color:${corrColor}">${cur.toFixed(3)}</div>
+      <div style="font-size:10px;color:${corrColor}">${regime}</div>
+    </div>
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 12px;min-width:130px">
+      <div style="font-size:9px;color:var(--text3);margin-bottom:4px">Historical Percentile</div>
+      <div style="font-size:16px;font-weight:700;color:var(--text)">${pct}th</div>
+      <div style="margin-top:4px;background:var(--surf2);border-radius:3px;height:5px">
+        <div style="height:100%;border-radius:3px;background:${corrColor};width:${pct}%"></div>
+      </div>
+    </div>
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 12px;min-width:130px">
+      <div style="font-size:9px;color:var(--text3);margin-bottom:4px">Distribution</div>
+      <div style="display:flex;justify-content:space-between;font-size:11px">
+        <span style="color:var(--text3)">Min</span><span>${mn.toFixed(3)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px">
+        <span style="color:var(--text3)">Med</span><span>${med.toFixed(3)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px">
+        <span style="color:var(--text3)">Max</span><span>${mx.toFixed(3)}</span>
+      </div>
+    </div>
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 12px;min-width:180px">
+      <div style="font-size:9px;color:var(--text3);margin-bottom:4px">Signal</div>
+      ${cur>0.5?`<div style="font-size:10px;color:var(--warn)">⚠ High correlation — limited diversification</div>`:''}
+      ${cur<-0.3?`<div style="font-size:10px;color:var(--pos)">✓ Negative correlation — good hedge</div>`:''}
+      ${pct>90?`<div style="font-size:10px;color:var(--neg)">⚑ Historically high correlation — may revert</div>`:''}
+      ${pct<10?`<div style="font-size:10px;color:var(--pos)">⚑ Historically low correlation — unusual</div>`:''}
+      ${Math.abs(cur)<0.2?`<div style="font-size:10px;color:var(--text2)">Correlation near zero — independent moves</div>`:''}
+    </div>
+  `;
 }
 
 // === ORDER FLOW ESTIMATION ===
