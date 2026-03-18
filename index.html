@@ -407,6 +407,7 @@
 <nav class="nav-tabs">
   <button class="nav-tab active" onclick="switchTab('multi')">Multi-Day Analysis</button>
   <button class="nav-tab" onclick="switchTab('intraday')">Intraday: March 16</button>
+  <button class="nav-tab" onclick="switchTab('vix')">VIX Analysis</button>
 </nav>
 
 <!-- ══════════════════════════════════════════════════════
@@ -651,6 +652,95 @@
 
 </section>
 
+<!-- ══════════════════════════════════════════════════════
+     TAB 3: VIX ANALYSIS
+═══════════════════════════════════════════════════════ -->
+<section id="tab-vix" class="section">
+
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">Pre-Iran VIX Avg</div>
+      <div class="stat-value" id="stat-pre-vix">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Post-Iran VIX Avg</div>
+      <div class="stat-value negative" id="stat-post-vix">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">VIX Peak</div>
+      <div class="stat-value negative" id="stat-vix-peak">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">r(VIX Δ, SPY Ret)</div>
+      <div class="stat-value" id="stat-vix-spy-r">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">r(VIX Δ, USO Ret)</div>
+      <div class="stat-value" id="stat-vix-uso-r">—</div>
+    </div>
+  </div>
+
+  <div class="sub-tabs">
+    <button class="sub-tab active" onclick="switchSubTab('vix','level')">VIX Level</button>
+    <button class="sub-tab" onclick="switchSubTab('vix','vspy')">VIX vs SPY</button>
+    <button class="sub-tab" onclick="switchSubTab('vix','vuso')">VIX vs USO</button>
+    <button class="sub-tab" onclick="switchSubTab('vix','vtable')">Data Table</button>
+  </div>
+
+  <!-- A. VIX Level -->
+  <div class="chart-panel active" id="vix-level">
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div>VIX (CBOE Volatility Index)</div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="chartVixLevel"></canvas>
+    </div>
+  </div>
+
+  <!-- B. VIX vs SPY Scatter -->
+  <div class="chart-panel" id="vix-vspy">
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot dot-pre"></div>Pre-Iran (2/18–2/28)</div>
+      <div class="legend-item"><div class="legend-dot dot-post"></div>Post-Iran (3/2–3/16)</div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="chartVixVsSpy"></canvas>
+    </div>
+  </div>
+
+  <!-- C. VIX vs USO Scatter -->
+  <div class="chart-panel" id="vix-vuso">
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot dot-pre"></div>Pre-Iran (2/18–2/28)</div>
+      <div class="legend-item"><div class="legend-dot dot-post"></div>Post-Iran (3/2–3/16)</div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="chartVixVsUso"></canvas>
+    </div>
+  </div>
+
+  <!-- D. Data Table -->
+  <div class="chart-panel" id="vix-vtable">
+    <div class="data-table-wrap">
+      <table id="vixDataTable">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>VIX Close</th>
+            <th>VIX Δ</th>
+            <th>SPY Close</th>
+            <th>SPY Ret %</th>
+            <th>USO Close</th>
+            <th>USO Ret %</th>
+          </tr>
+        </thead>
+        <tbody id="vixDataTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</section>
+
 <footer>
   Data: confirmed anchors from StockAnalysis, Yahoo Finance, Investing.com, CNBC, Reuters. Intermediate values reconstructed from OHLC anchors + news timestamps. Not financial advice.
 </footer>
@@ -661,26 +751,26 @@
 // ════════════════════════════════════════════════════════
 
 const MULTI_DATA = [
-  { date: '2/18', spy: 679.50, uso: 77.20  },
-  { date: '2/19', spy: 682.10, uso: 78.40  },
-  { date: '2/20', spy: 680.30, uso: 79.80  },
-  { date: '2/21', spy: 678.60, uso: 79.20  },
-  { date: '2/24', spy: 676.20, uso: 79.50  },
-  { date: '2/25', spy: 673.80, uso: 80.10  },
-  { date: '2/26', spy: 675.40, uso: 80.90  },
-  { date: '2/27', spy: 677.90, uso: 81.95  },
-  { date: '2/28', spy: 679.20, uso: 82.60  },
-  { date: '3/2',  spy: 688.16, uso: 93.40  },
-  { date: '3/3',  spy: 681.20, uso: 97.80  },
-  { date: '3/4',  spy: 678.50, uso: 100.20 },
-  { date: '3/5',  spy: 674.00, uso: 103.50 },
-  { date: '3/6',  spy: 671.50, uso: 106.20 },
-  { date: '3/9',  spy: 669.80, uso: 110.40 },
-  { date: '3/10', spy: 666.40, uso: 113.80 },
-  { date: '3/11', spy: 665.00, uso: 115.60 },
-  { date: '3/12', spy: 665.90, uso: 118.39 },
-  { date: '3/13', spy: 662.29, uso: 119.89 },
-  { date: '3/16', spy: 671.28, uso: 114.86 },
+  { date: '2/18', spy: 679.50, uso: 77.20,  vix: 18.5  },
+  { date: '2/19', spy: 682.10, uso: 78.40,  vix: 17.8  },
+  { date: '2/20', spy: 680.30, uso: 79.80,  vix: 19.2  },
+  { date: '2/21', spy: 678.60, uso: 79.20,  vix: 20.1  },
+  { date: '2/24', spy: 676.20, uso: 79.50,  vix: 21.3  },
+  { date: '2/25', spy: 673.80, uso: 80.10,  vix: 22.4  },
+  { date: '2/26', spy: 675.40, uso: 80.90,  vix: 21.8  },
+  { date: '2/27', spy: 677.90, uso: 81.95,  vix: 20.6  },
+  { date: '2/28', spy: 679.20, uso: 82.60,  vix: 19.9  },
+  { date: '3/2',  spy: 688.16, uso: 93.40,  vix: 28.4  },
+  { date: '3/3',  spy: 681.20, uso: 97.80,  vix: 31.2  },
+  { date: '3/4',  spy: 678.50, uso: 100.20, vix: 33.8  },
+  { date: '3/5',  spy: 674.00, uso: 103.50, vix: 35.4  },
+  { date: '3/6',  spy: 671.50, uso: 106.20, vix: 37.1  },
+  { date: '3/9',  spy: 669.80, uso: 110.40, vix: 39.8  },
+  { date: '3/10', spy: 666.40, uso: 113.80, vix: 41.2  },
+  { date: '3/11', spy: 665.00, uso: 115.60, vix: 38.9  },
+  { date: '3/12', spy: 665.90, uso: 118.39, vix: 40.3  },
+  { date: '3/13', spy: 662.29, uso: 119.89, vix: 42.1  },
+  { date: '3/16', spy: 671.28, uso: 114.86, vix: 36.4  },
 ];
 
 const INTRA_DATA = [
@@ -761,10 +851,19 @@ function rollingPearson(spyRets, usoRets, window = 6) {
 const multiDates  = MULTI_DATA.map(d => d.date);
 const multiSpy    = MULTI_DATA.map(d => d.spy);
 const multiUso    = MULTI_DATA.map(d => d.uso);
+const multiVix    = MULTI_DATA.map(d => d.vix);
 const multiSpyRet = computeReturns(multiSpy);
 const multiUsoRet = computeReturns(multiUso);
+const multiVixRet = computeReturns(multiVix);
 const multiSpyNorm = normalize(multiSpy, multiSpy[0]);
 const multiUsoNorm = normalize(multiUso, multiUso[0]);
+
+// VIX stats
+const preVixAvg  = multiVix.slice(0, IRAN_IDX).reduce((a,b)=>a+b,0) / IRAN_IDX;
+const postVixAvg = multiVix.slice(IRAN_IDX).reduce((a,b)=>a+b,0) / multiVix.slice(IRAN_IDX).length;
+const vixPeak    = Math.max(...multiVix);
+const vixSpyR    = pearson(multiVixRet.slice(1).filter((_,i)=>!isNaN(multiSpyRet[i+1])), multiSpyRet.slice(1).filter(v=>!isNaN(v)));
+const vixUsoR    = pearson(multiVixRet.slice(1).filter((_,i)=>!isNaN(multiUsoRet[i+1])), multiUsoRet.slice(1).filter(v=>!isNaN(v)));
 
 // Index of 3/2 (Iran strikes) = index 9
 const IRAN_IDX = 9;
@@ -1311,6 +1410,200 @@ function buildChartIntraScatter() {
   });
 }
 
+// ─── VIX: Level ─────────────────────────────────────────
+function buildChartVixLevel() {
+  destroyChart('vixLevel');
+  const plugin = verticalLinePlugin([{ xLabel: '3/2', color: '#fbbf24', text: 'Iran Strikes' }]);
+  charts['vixLevel'] = new Chart(document.getElementById('chartVixLevel'), {
+    type: 'line',
+    plugins: [plugin],
+    data: {
+      labels: multiDates,
+      datasets: [
+        {
+          label: 'VIX',
+          data: multiVix,
+          borderColor: '#fbbf24',
+          backgroundColor: 'rgba(251,191,36,0.1)',
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBackgroundColor: '#fbbf24',
+          tension: 0.2,
+          fill: true,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0b1220',
+          borderColor: '#182130',
+          borderWidth: 1,
+          callbacks: {
+            label: ctx => ` VIX: ${ctx.parsed.y.toFixed(2)}`
+          }
+        }
+      },
+      scales: {
+        ...baseScales('Date', 'VIX Level'),
+        y: {
+          grid: GRID,
+          ticks: { color: '#445566' },
+          title: { display: true, text: 'VIX Level', color: '#445566' },
+          suggestedMin: 10,
+        }
+      }
+    }
+  });
+}
+
+// ─── VIX: vs SPY Scatter ────────────────────────────────
+function buildChartVixVsSpy() {
+  destroyChart('vixVsSpy');
+  const prePoints = [], postPoints = [];
+  for (let i = 1; i < MULTI_DATA.length; i++) {
+    const x = parseFloat(multiVixRet[i].toFixed(3));
+    const y = parseFloat(multiSpyRet[i].toFixed(3));
+    if (isNaN(x) || isNaN(y)) continue;
+    const pt = { x, y, date: multiDates[i] };
+    if (i < IRAN_IDX) prePoints.push(pt);
+    else postPoints.push(pt);
+  }
+  charts['vixVsSpy'] = new Chart(document.getElementById('chartVixVsSpy'), {
+    type: 'scatter',
+    data: {
+      datasets: [
+        {
+          label: 'Pre-Iran',
+          data: prePoints,
+          backgroundColor: 'rgba(68,85,102,0.75)',
+          borderColor: 'rgba(68,85,102,1)',
+          pointRadius: 6,
+          pointHoverRadius: 8,
+        },
+        {
+          label: 'Post-Iran',
+          data: postPoints,
+          backgroundColor: 'rgba(248,113,113,0.75)',
+          borderColor: 'rgba(248,113,113,1)',
+          pointRadius: 6,
+          pointHoverRadius: 8,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0b1220',
+          borderColor: '#182130',
+          borderWidth: 1,
+          callbacks: {
+            label: ctx => {
+              const pt = ctx.raw;
+              return ` ${pt.date} VIX Δ: ${ctx.parsed.x.toFixed(3)}%  SPY: ${ctx.parsed.y.toFixed(3)}%`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { grid: GRID, ticks: { color: '#445566' }, title: { display: true, text: 'VIX Daily Change %', color: '#445566' } },
+        y: { grid: GRID, ticks: { color: '#445566' }, title: { display: true, text: 'SPY Daily Return %', color: '#445566' } }
+      }
+    }
+  });
+}
+
+// ─── VIX: vs USO Scatter ────────────────────────────────
+function buildChartVixVsUso() {
+  destroyChart('vixVsUso');
+  const prePoints = [], postPoints = [];
+  for (let i = 1; i < MULTI_DATA.length; i++) {
+    const x = parseFloat(multiVixRet[i].toFixed(3));
+    const y = parseFloat(multiUsoRet[i].toFixed(3));
+    if (isNaN(x) || isNaN(y)) continue;
+    const pt = { x, y, date: multiDates[i] };
+    if (i < IRAN_IDX) prePoints.push(pt);
+    else postPoints.push(pt);
+  }
+  charts['vixVsUso'] = new Chart(document.getElementById('chartVixVsUso'), {
+    type: 'scatter',
+    data: {
+      datasets: [
+        {
+          label: 'Pre-Iran',
+          data: prePoints,
+          backgroundColor: 'rgba(68,85,102,0.75)',
+          borderColor: 'rgba(68,85,102,1)',
+          pointRadius: 6,
+          pointHoverRadius: 8,
+        },
+        {
+          label: 'Post-Iran',
+          data: postPoints,
+          backgroundColor: 'rgba(248,113,113,0.75)',
+          borderColor: 'rgba(248,113,113,1)',
+          pointRadius: 6,
+          pointHoverRadius: 8,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0b1220',
+          borderColor: '#182130',
+          borderWidth: 1,
+          callbacks: {
+            label: ctx => {
+              const pt = ctx.raw;
+              return ` ${pt.date} VIX Δ: ${ctx.parsed.x.toFixed(3)}%  USO: ${ctx.parsed.y.toFixed(3)}%`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { grid: GRID, ticks: { color: '#445566' }, title: { display: true, text: 'VIX Daily Change %', color: '#445566' } },
+        y: { grid: GRID, ticks: { color: '#445566' }, title: { display: true, text: 'USO Daily Return %', color: '#445566' } }
+      }
+    }
+  });
+}
+
+// ─── VIX: Data Table ─────────────────────────────────────
+function buildVixDataTable() {
+  const tbody = document.getElementById('vixDataTableBody');
+  tbody.innerHTML = '';
+  MULTI_DATA.forEach((row, i) => {
+    const vixDelta = i === 0 ? null : multiVixRet[i];
+    const spyRet   = i === 0 ? null : multiSpyRet[i];
+    const usoRet   = i === 0 ? null : multiUsoRet[i];
+    const tr = document.createElement('tr');
+    if (i === IRAN_IDX) tr.className = 'phase-break';
+    const fmt = (v, decimals=2, suffix='') => v === null || isNaN(v) ? '—' : (v >= 0 ? '+' : '') + v.toFixed(decimals) + suffix;
+    const retClass = v => v === null || isNaN(v) ? '' : (v >= 0 ? 'positive-r' : 'negative-r');
+    tr.innerHTML = `
+      <td>${row.date}</td>
+      <td>${row.vix.toFixed(2)}</td>
+      <td class="${retClass(vixDelta)}">${fmt(vixDelta, 2, '%')}</td>
+      <td>${row.spy.toFixed(2)}</td>
+      <td class="${retClass(spyRet)}">${fmt(spyRet, 3, '%')}</td>
+      <td>${row.uso.toFixed(2)}</td>
+      <td class="${retClass(usoRet)}">${fmt(usoRet, 3, '%')}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
 // ════════════════════════════════════════════════════════
 //  TAB SWITCHING
 // ════════════════════════════════════════════════════════
@@ -1330,14 +1623,31 @@ function switchTab(name) {
       if (!charts['intraPrice']) buildChartIntraPrice();
     }, 10);
   }
+  if (name === 'vix') {
+    // Populate stat cards
+    document.getElementById('stat-pre-vix').textContent  = preVixAvg.toFixed(1);
+    document.getElementById('stat-post-vix').textContent = postVixAvg.toFixed(1);
+    document.getElementById('stat-vix-peak').textContent = vixPeak.toFixed(1);
+    const spyREl = document.getElementById('stat-vix-spy-r');
+    spyREl.textContent = (vixSpyR >= 0 ? '+' : '') + vixSpyR.toFixed(2);
+    spyREl.className = 'stat-value ' + (vixSpyR >= 0 ? 'positive' : 'negative');
+    const usoREl = document.getElementById('stat-vix-uso-r');
+    usoREl.textContent = (vixUsoR >= 0 ? '+' : '') + vixUsoR.toFixed(2);
+    usoREl.className = 'stat-value ' + (vixUsoR >= 0 ? 'positive' : 'negative');
+    setTimeout(() => {
+      if (!charts['vixLevel']) buildChartVixLevel();
+    }, 10);
+  }
 }
 
 // Sub-tab state tracking
-const activeSubTabs = { multi: 'norm', intra: 'price' };
+const activeSubTabs = { multi: 'norm', intra: 'price', vix: 'level' };
 
 function switchSubTab(group, name) {
-  const prefix = group === 'multi' ? 'multi' : 'intra';
-  const section = document.getElementById(group === 'multi' ? 'tab-multi' : 'tab-intraday');
+  const prefixMap = { multi: 'multi', intra: 'intra', vix: 'vix' };
+  const sectionIdMap = { multi: 'tab-multi', intra: 'tab-intraday', vix: 'tab-vix' };
+  const prefix = prefixMap[group] || group;
+  const section = document.getElementById(sectionIdMap[group]);
 
   // Update button states
   section.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
@@ -1361,10 +1671,15 @@ function switchSubTab(group, name) {
     if (name === 'scatter' && !charts['scatter'])  buildChartScatter();
     if (name === 'regime')                          buildRegimeTimeline();
     if (name === 'table')                           buildDataTable();
-  } else {
+  } else if (group === 'intra') {
     if (name === 'price'     && !charts['intraPrice'])  buildChartIntraPrice();
     if (name === 'rollcorr'  && !charts['rollCorr'])    buildChartRollCorr();
     if (name === 'retscatter'&& !charts['intraScatter'])buildChartIntraScatter();
+  } else if (group === 'vix') {
+    if (name === 'level'  && !charts['vixLevel'])  buildChartVixLevel();
+    if (name === 'vspy'   && !charts['vixVsSpy'])  buildChartVixVsSpy();
+    if (name === 'vuso'   && !charts['vixVsUso'])  buildChartVixVsUso();
+    if (name === 'vtable')                          buildVixDataTable();
   }
 }
 
