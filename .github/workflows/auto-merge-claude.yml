@@ -16,33 +16,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
 
-      - name: Create PR and merge
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const branch = context.ref.replace('refs/heads/', '');
-            console.log(`Processing branch: ${branch}`);
-
-            // Create a pull request
-            const { data: pr } = await github.rest.pulls.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `Auto-merge: ${branch}`,
-              head: branch,
-              base: 'main',
-              body: `Automated PR from Claude Code branch \`${branch}\`.\n\nThis will be auto-merged to trigger a GitHub Pages deploy.`
-            });
-            console.log(`Created PR #${pr.number}`);
-
-            // Small delay to let GitHub process the PR
-            await new Promise(r => setTimeout(r, 5000));
-
-            // Merge the PR
-            await github.rest.pulls.merge({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: pr.number,
-              merge_method: 'squash'
-            });
-            console.log(`Merged PR #${pr.number}`);
+      - name: Merge to main
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          echo "Merging $BRANCH into main"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout main
+          git merge --squash "$BRANCH"
+          git commit -m "Auto-merge: ${BRANCH}"
+          git push origin main
