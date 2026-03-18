@@ -1,0 +1,51 @@
+{
+  "url": "https://tandylew.github.io/correlate/",
+  "timestamp": "2026-03-18T05:12:51.084Z",
+  "console_errors": [],
+  "js_exceptions": [],
+  "checks": {
+    "has_content": true,
+    "page_title_correct": true,
+    "has_spy": true,
+    "has_uso": true,
+    "has_vix": true,
+    "has_status_dot": true,
+    "status_is_demo": true,
+    "ticker_count": 3,
+    "has_ticker_strip": true,
+    "tab_count": 3,
+    "tab_names": [
+      "Market",
+      "Correlate",
+      "Ingest"
+    ],
+    "has_nav_tabs": true,
+    "price_card_count": 3,
+    "has_price_cards": true,
+    "canvas_count": 3,
+    "has_charts": true,
+    "has_backfill_bar": true,
+    "backfill_btn_count": 6,
+    "has_backfill_buttons": true,
+    "has_settings_btn": true,
+    "has_corr_display": true,
+    "prices": [
+      "$672.03",
+      "$117.32",
+      "$23.780"
+    ],
+    "prices_loaded": true,
+    "no_object_display": true,
+    "no_nan_prices": true,
+    "corr_tab_visible": true,
+    "corr_value": "-0.033",
+    "corr_not_empty": true,
+    "ingest_tab_visible": true,
+    "has_file_upload": true,
+    "has_paste_area": false,
+    "has_fetch_input": false
+  },
+  "pass": true,
+  "http_status": 200,
+  "page_title": "correlate · realtime market analysis"
+}
