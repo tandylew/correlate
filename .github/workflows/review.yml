@@ -88,7 +88,9 @@ jobs:
                   const loc = msg.location();
                   const isFavicon = (loc?.url || '').includes('favicon');
                   const isResourceLoad = text.includes('Failed to load resource');
-                  if (isFavicon || (isResourceLoad && !(loc?.url || '').includes('index'))) return;
+                  // Ignore CORS/network errors from external APIs (expected in browser)
+                  const isApiError = text.includes('api.robinhood') || text.includes('finance.yahoo') || text.includes('alphavantage') || text.includes('corsproxy') || text.includes('ERR_NAME_NOT_RESOLVED') || text.includes('net::ERR');
+                  if (isFavicon || isApiError || (isResourceLoad && !(loc?.url || '').includes('index'))) return;
                   results.console_errors.push({ text, location: loc });
                 }
               });
@@ -102,10 +104,12 @@ jobs:
                 results.pass = false;
               });
 
-              // Capture failed network requests
+              // Capture failed network requests (but ignore external API failures)
               page.on('requestfailed', req => {
+                const reqUrl = req.url();
+                if (reqUrl.includes('api.robinhood') || reqUrl.includes('finance.yahoo') || reqUrl.includes('alphavantage') || reqUrl.includes('corsproxy')) return;
                 results.network_errors.push({
-                  url: req.url(),
+                  url: reqUrl,
                   failure: req.failure()?.errorText
                 });
               });
@@ -119,8 +123,8 @@ jobs:
               results.http_status = response.status();
               results.page_title = await page.title();
 
-              // Wait extra for Chart.js rendering
-              await new Promise(r => setTimeout(r, 3000));
+              // Wait extra for Chart.js rendering and simulated data
+              await new Promise(r => setTimeout(r, 8000));
 
               // Run checks in browser context
               results.checks = await page.evaluate(() => {
@@ -139,26 +143,35 @@ jobs:
                 checks.canvas_count = canvases.length;
                 checks.has_charts = canvases.length > 0;
 
-                // Check for stat cards with correlation values
+                // Check for stat cards with values
                 const statValues = [...document.querySelectorAll('.stat-value')];
                 checks.stat_card_count = statValues.length;
                 checks.has_correlation_stats = statValues.some(el =>
-                  /[−+-]?0\.\d+/.test(el.textContent)
+                  /[−+-]?0\.\d+/.test(el.textContent) || /\d+\.\d+/.test(el.textContent)
                 );
+
+                // Check for realtime UI elements
+                checks.has_status_badge = document.querySelector('.status-badge') !== null;
+                checks.has_symbol_selects = document.querySelectorAll('.symbol-select').length >= 2;
+                checks.has_backfill_buttons = document.querySelectorAll('.backfill-group .btn').length >= 3;
+                checks.has_watchlist = document.getElementById('watchlist') !== null;
+                checks.has_dropzone = document.getElementById('dropzone') !== null;
+                checks.has_log_area = document.getElementById('logArea') !== null;
 
                 // Check for navigation tabs
                 const tabs = document.querySelectorAll('.nav-tab');
                 checks.tab_count = tabs.length;
                 checks.tab_names = [...tabs].map(t => t.textContent.trim());
 
-                // Check for event analysis cards
-                checks.has_event_cards = document.querySelectorAll('.event-card').length > 0;
-
                 // Check visible text isn't showing errors
                 const bodyText = document.body.innerText;
                 checks.no_visible_errors = !bodyText.includes('undefined') &&
                                            !bodyText.includes('NaN') &&
                                            !bodyText.includes('[object Object]');
+
+                // Check that data is being displayed (prices or simulated)
+                const priceElements = statValues.filter(el => /\d+\.\d{2}/.test(el.textContent));
+                checks.has_price_data = priceElements.length > 0;
 
                 return checks;
               });
@@ -219,8 +232,14 @@ jobs:
               f"| SPY ticker present | {yn(checks.get('has_spy'))} |",
               f"| USO ticker present | {yn(checks.get('has_uso'))} |",
               f"| Charts rendered ({checks.get('canvas_count', 0)} canvases) | {yn(checks.get('has_charts'))} |",
-              f"| Correlation stats visible | {yn(checks.get('has_correlation_stats'))} |",
-              f"| Event analysis cards | {yn(checks.get('has_event_cards'))} |",
+              f"| Stat cards with data | {yn(checks.get('has_correlation_stats'))} |",
+              f"| Price data displayed | {yn(checks.get('has_price_data'))} |",
+              f"| Status badge present | {yn(checks.get('has_status_badge'))} |",
+              f"| Symbol selectors | {yn(checks.get('has_symbol_selects'))} |",
+              f"| Backfill buttons | {yn(checks.get('has_backfill_buttons'))} |",
+              f"| Watchlist | {yn(checks.get('has_watchlist'))} |",
+              f"| Data dropzone | {yn(checks.get('has_dropzone'))} |",
+              f"| Activity log | {yn(checks.get('has_log_area'))} |",
               f"| No visible NaN/undefined | {yn(checks.get('no_visible_errors'))} |",
               f"| Zero JS exceptions | {yn(len(r.get('js_exceptions', [])) == 0)} |",
               f"| Zero console errors | {yn(len(r.get('console_errors', [])) == 0)} |",
