@@ -421,6 +421,14 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">ATR Trailing Stop Levels</div>
       <div id="trailing-stop-grid" style="display:flex;gap:8px;flex-wrap:wrap"></div>
     </div>
+    <div id="sym-compare-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Symbol Comparison Table</div>
+      <div id="sym-compare-table" style="overflow-x:auto"></div>
+    </div>
+    <div id="vol-spike-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Volume Spike Detector — <span id="vol-spike-sym"></span></div>
+      <div id="vol-spike-list" style="display:flex;flex-direction:column;gap:4px;max-height:140px;overflow-y:auto"></div>
+    </div>
   </section>
   <section id="tab-correlate" class="main-tab">
     <div id="corr-header">
@@ -1752,7 +1760,7 @@ function updateRegimeBar(){
   }
   bar.innerHTML=items.length?items.join('<span style="color:var(--border2);margin:0 2px">|</span>'):'<span style="color:var(--text3);font-size:10px">Loading market data…</span>';
 }
-function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderLinRegPanel();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();renderTradeIdeas();renderTrailingStops();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();}if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();renderPortCorr();renderRebalanceTargets();}updateCorrSelectors();updateWatchlistChips();}
+function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderLinRegPanel();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();renderTradeIdeas();renderTrailingStops();renderSymCompare();renderVolumeSpikes();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();}if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();renderPortCorr();renderRebalanceTargets();}updateCorrSelectors();updateWatchlistChips();}
 function startPolling(){stopPolling();if(CFG.pollInterval<=0||CFG.source==='demo') return;S.pollTimer=setInterval(()=>fetchAllSymbols(),CFG.pollInterval*1000);}
 function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
 function startDemoTick(){stopDemoTick();S.demoTicker=setInterval(tickDemoData,10000);}
@@ -1762,7 +1770,7 @@ function switchTab(tab){
   const panel=document.getElementById('tab-'+tab);const btn=document.querySelector(`.nav-btn[data-tab="${tab}"]`);
   if(panel) panel.classList.add('active');if(btn) btn.classList.add('active');
   if(tab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();if(CFG.source!=='demo'&&Object.keys(yieldCache).length===0) setTimeout(fetchYieldCurve,200);}
-  if(tab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();renderTradeIdeas();renderTrailingStops();}
+  if(tab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();renderTradeIdeas();renderTrailingStops();renderSymCompare();renderVolumeSpikes();}
   if(tab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();renderPortCorr();renderRebalanceTargets();}
 }
 function switchIngest(type){
@@ -3262,6 +3270,71 @@ function renderTrailingStops(){
       <div style="margin-top:4px;font-size:10px;color:var(--text3)">Current: $${cur.toFixed(2)}</div>
     </div>`;
   }).join('');
+}
+
+// === SYMBOL COMPARISON TABLE ===
+function renderSymCompare(){
+  const el=document.getElementById('sym-compare-table');if(!el) return;
+  const syms=CFG.symbols;if(!syms.length) return;
+  const rows=syms.map(sym=>{
+    const bars=getFilteredBars(sym,CFG.tf);if(bars.length<5) return null;
+    const closes=bars.map(b=>b.close);const n=closes.length;const last=closes[n-1];
+    const rets=pctReturns(closes).filter(v=>!isNaN(v)&&isFinite(v));
+    const mean=rets.reduce((s,v)=>s+v,0)/(rets.length||1);
+    const variance=rets.reduce((s,v)=>s+(v-mean)**2,0)/(rets.length||1);
+    const std=Math.sqrt(variance);
+    const annMean=mean*252*100;const annStd=std*Math.sqrt(252)*100;
+    const sharpe=annStd>0?(annMean-5.25)/annStd:0;
+    const totalRet=(last/closes[0]-1)*100;
+    const q=S.data[sym]?.quote;const changePct=q?.changePct||0;
+    // Max drawdown
+    let peak=closes[0];let maxDD=0;closes.forEach(c=>{if(c>peak)peak=c;const dd=(c-peak)/peak*100;if(dd<maxDD)maxDD=dd;});
+    const color=SYMBOL_CFG[sym]?.color||'#94a3b8';
+    return{sym,last,changePct,totalRet,annMean,annStd,sharpe,maxDD,color};
+  }).filter(Boolean);
+  if(!rows.length){el.innerHTML='<span style="color:var(--text3);font-size:11px">No data.</span>';return;}
+  const fmt1=(v)=>(v>=0?'+':'')+v.toFixed(1)+'%';const fmtN=(v)=>v.toFixed(2);
+  el.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:11px">
+    <thead><tr style="border-bottom:1px solid var(--border)">
+      ${['Symbol','Price','Today','Period Ret','Ann Ret','Ann Vol','Sharpe','MaxDD'].map(h=>`<th style="text-align:right;padding:4px 8px;color:var(--text3);font-weight:500;first-of-type{text-align:left}">${h}</th>`).join('')}
+    </tr></thead>
+    <tbody>${rows.map(r=>`<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:5px 8px;color:${r.color};font-weight:700">${r.sym}</td>
+      <td style="text-align:right;padding:5px 8px;color:var(--text)">$${r.last>=100?r.last.toFixed(2):r.last.toFixed(3)}</td>
+      <td style="text-align:right;padding:5px 8px;color:${r.changePct>=0?'var(--pos)':'var(--neg)'}">${fmt1(r.changePct)}</td>
+      <td style="text-align:right;padding:5px 8px;color:${r.totalRet>=0?'var(--pos)':'var(--neg)'}">${fmt1(r.totalRet)}</td>
+      <td style="text-align:right;padding:5px 8px;color:${r.annMean>=0?'var(--pos)':'var(--neg)'}">${fmt1(r.annMean)}</td>
+      <td style="text-align:right;padding:5px 8px;color:var(--text)">${fmt1(r.annStd)}</td>
+      <td style="text-align:right;padding:5px 8px;color:${r.sharpe>=1?'var(--pos)':r.sharpe>=0?'var(--text)':'var(--neg)'}">${fmtN(r.sharpe)}</td>
+      <td style="text-align:right;padding:5px 8px;color:var(--neg)">${fmt1(r.maxDD)}</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
+// === VOLUME SPIKE DETECTOR ===
+function renderVolumeSpikes(){
+  const sym=CFG.symbols[0];if(!sym) return;
+  const el=document.getElementById('vol-spike-list');const lbl=document.getElementById('vol-spike-sym');
+  if(!el) return;if(lbl) lbl.textContent=sym;
+  const bars=getFilteredBars(sym,CFG.tf);if(bars.length<20) return;
+  const vols=bars.map(b=>b.volume||0);
+  const avgVol=vols.slice(0,-1).reduce((s,v)=>s+v,0)/(vols.length-1);
+  if(!avgVol) return;
+  const spikes=bars.map((b,i)=>{
+    if(!b.volume) return null;
+    const ratio=b.volume/avgVol;
+    if(ratio<1.5) return null;// min 1.5x average
+    const ret=(b.close-(b.open||b.close))/(b.open||b.close)*100;
+    return{date:b.dateStr||new Date(b.ts*1000).toLocaleDateString(),ratio,vol:b.volume,ret,close:b.close};
+  }).filter(Boolean).reverse().slice(0,15);
+  if(!spikes.length){el.innerHTML='<span style="color:var(--text3);font-size:11px">No significant volume spikes detected.</span>';return;}
+  el.innerHTML=spikes.map(s=>`<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid var(--border);font-size:11px">
+    <span style="color:var(--text3);min-width:80px">${s.date}</span>
+    <span style="color:var(--warn);font-weight:600">${s.ratio.toFixed(1)}× avg</span>
+    <span style="color:var(--text2)">${s.vol>=1e6?(s.vol/1e6).toFixed(1)+'M':s.vol>=1e3?(s.vol/1e3).toFixed(0)+'K':s.vol}</span>
+    <span style="${s.ret>=0?'color:var(--pos)':'color:var(--neg)'}">${s.ret>=0?'+':''}${s.ret.toFixed(2)}%</span>
+    <div style="flex:1;height:4px;background:var(--surf2);border-radius:2px"><div style="height:100%;border-radius:2px;background:var(--warn);width:${Math.min(100,(s.ratio-1)*20).toFixed(0)}%"></div></div>
+  </div>`).join('');
 }
 
 // === TRADE IDEAS / CONFLUENCE ===
