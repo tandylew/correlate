@@ -135,7 +135,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
 .pc-52w-lo{white-space:nowrap}.pc-52w-hi{white-space:nowrap}
 #volume-wrap{background:var(--surf);border:1px solid var(--border);border-top:none;border-radius:0 0 4px 4px;padding:4px 8px;flex-shrink:0}
 #rsi-wrap{background:var(--surf);border:1px solid var(--border);border-top:none;border-radius:0 0 4px 4px;padding:4px 8px;flex-shrink:0}
-#volume-wrap canvas,#rsi-wrap canvas,#macd-wrap canvas,#obv-wrap canvas,#adx-wrap canvas,#cci-wrap canvas,#williams-wrap canvas,#roc-wrap canvas,#chop-wrap canvas,#mfi-wrap canvas{width:100% !important;height:100% !important}
+#volume-wrap canvas,#rsi-wrap canvas,#macd-wrap canvas,#obv-wrap canvas,#adx-wrap canvas,#cci-wrap canvas,#williams-wrap canvas,#roc-wrap canvas,#chop-wrap canvas,#mfi-wrap canvas,#tsi-wrap canvas{width:100% !important;height:100% !important}
 .ind-controls{display:flex;gap:4px;flex-wrap:wrap}
 .ind-btn{background:none;border:1px solid var(--border);border-radius:3px;color:var(--text3);cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 7px;transition:all 0.15s}
 .ind-btn:hover{color:var(--text);border-color:var(--border2)}.ind-btn.active{color:var(--accent);border-color:var(--accent);background:rgba(34,211,238,0.08)}
@@ -344,6 +344,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
             <button class="ind-btn" data-ind="mfi" title="Money Flow Index (14) — volume-weighted RSI. >80 overbought, &lt;20 oversold">MFI</button>
             <button class="ind-btn" data-ind="psar" title="Parabolic SAR — trend-following dots above/below price for stop placement">PSAR</button>
             <button class="ind-btn" data-ind="kc" title="Keltner Channels (20,2×ATR) — similar to BB but ATR-based, price mode only">KC</button>
+            <button class="ind-btn" data-ind="tsi" title="True Strength Index (13,7) — momentum oscillator. >0=bullish, &lt;0=bearish">TSI</button>
           </div>
           <button class="export-btn" id="export-btn" title="Export all symbols as CSV">⬇ CSV</button>
           <button class="export-btn" id="snap-btn" title="Copy chart as PNG image">📷</button>
@@ -364,6 +365,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
     <div id="roc-wrap" style="height:72px;position:relative;display:none"><canvas id="roc-chart"></canvas></div>
     <div id="chop-wrap" style="height:72px;position:relative;display:none"><canvas id="chop-chart"></canvas></div>
     <div id="mfi-wrap" style="height:72px;position:relative;display:none"><canvas id="mfi-chart"></canvas></div>
+    <div id="tsi-wrap" style="height:72px;position:relative;display:none"><canvas id="tsi-chart"></canvas></div>
     <div id="linreg-panel-wrap" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Linear Regression Channel — <span id="linreg-sym"></span></div>
       <div id="linreg-panel"></div>
@@ -979,7 +981,7 @@ const SYMBOL_CFG={
 const YAHOO_RANGES={'1D':{interval:'5m',range:'1d'},'1W':{interval:'1h',range:'5d'},'1M':{interval:'1d',range:'1mo'},'3M':{interval:'1d',range:'3mo'},'YTD':{interval:'1d',range:'ytd'},'1Y':{interval:'1d',range:'1y'}};
 const RBH_RANGES={'1D':{interval:'5minute',span:'day'},'1W':{interval:'10minute',span:'week'},'1M':{interval:'day',span:'month'},'3M':{interval:'day',span:'3month'},'YTD':{interval:'day',span:'year'},'1Y':{interval:'day',span:'year'}};
 const CFG_VER=3;
-const CFG_DEF={_v:CFG_VER,source:'yahoo',corsProxy:'https://corsproxy.io/?',rbhToken:'',avKey:'',pollInterval:60,symbols:['SPY','USO','VIX'],tf:'1D',chartType:'line',priceMode:'indexed',indicators:{sma20:true,sma50:false,sma200:false,bb:false,volume:true,rsi:false,macd:false,stoch:false,obv:false,vwap:false,fib:false,adx:false,ichimoku:false,cci:false,williams:false,roc:false,chop:false,mfi:false,psar:false,kc:false},alerts:[],portfolio:[]};
+const CFG_DEF={_v:CFG_VER,source:'yahoo',corsProxy:'https://corsproxy.io/?',rbhToken:'',avKey:'',pollInterval:60,symbols:['SPY','USO','VIX'],tf:'1D',chartType:'line',priceMode:'indexed',indicators:{sma20:true,sma50:false,sma200:false,bb:false,volume:true,rsi:false,macd:false,stoch:false,obv:false,vwap:false,fib:false,adx:false,ichimoku:false,cci:false,williams:false,roc:false,chop:false,mfi:false,psar:false,kc:false,tsi:false},alerts:[],portfolio:[]};
 let CFG;
 try{
   const _s=JSON.parse(localStorage.getItem('correlate-cfg')||'{}');
@@ -1596,8 +1598,8 @@ function toHeikinAshi(bars){
   return ha;
 }
 function buildMainChart(){
-  if(CFG.chartType==='ohlc'){const bars=getFilteredBars(CFG.symbols[0],CFG.tf);buildOHLCChart(bars);buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();if(CFG.indicators.macd) buildMACDChart();if(CFG.indicators.stoch) buildStochChart();buildOBVChart();buildADXChart();buildCCIChart();buildWilliamsChart();buildROCChart();buildCHOPChart();buildMFIChart();return;}
-  if(CFG.chartType==='heikin'){const rawBars=getFilteredBars(CFG.symbols[0],CFG.tf);const haBars=toHeikinAshi(rawBars);buildOHLCChart(haBars,true);buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();if(CFG.indicators.macd) buildMACDChart();if(CFG.indicators.stoch) buildStochChart();buildOBVChart();buildADXChart();buildCCIChart();buildWilliamsChart();buildROCChart();buildCHOPChart();buildMFIChart();return;}
+  if(CFG.chartType==='ohlc'){const bars=getFilteredBars(CFG.symbols[0],CFG.tf);buildOHLCChart(bars);buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();if(CFG.indicators.macd) buildMACDChart();if(CFG.indicators.stoch) buildStochChart();buildOBVChart();buildADXChart();buildCCIChart();buildWilliamsChart();buildROCChart();buildCHOPChart();buildMFIChart();buildTSIChart();return;}
+  if(CFG.chartType==='heikin'){const rawBars=getFilteredBars(CFG.symbols[0],CFG.tf);const haBars=toHeikinAshi(rawBars);buildOHLCChart(haBars,true);buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();if(CFG.indicators.macd) buildMACDChart();if(CFG.indicators.stoch) buildStochChart();buildOBVChart();buildADXChart();buildCCIChart();buildWilliamsChart();buildROCChart();buildCHOPChart();buildMFIChart();buildTSIChart();return;}
   dc('main');const canvas=document.getElementById('main-chart');if(!canvas) return;
   const tf=CFG.tf;const syms=CFG.symbols.filter(s=>S.data[s]?.bars?.length>=2);if(!syms.length) return;
   const firstBars=getFilteredBars(syms[0],tf);
@@ -1668,7 +1670,7 @@ function buildMainChart(){
   const yTitle=priceMode==='price'?'Price ($)':'Indexed (base=100)';
   const yFmt=priceMode==='price'?v=>'$'+(v>=100?v.toFixed(0):v.toFixed(2)):v=>v.toFixed(1);
   S.charts['main']=new Chart(canvas,{type:'line',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{backgroundColor:'#0d1520',borderColor:'#1a2535',borderWidth:1,callbacks:{label:ctx=>{const lbl=ctx.dataset.label;if(!lbl||lbl.startsWith('BB')) return null;if(lbl.startsWith('SMA')||lbl==='VWAP'||lbl.startsWith('BB')||lbl.startsWith('Fib')) return(lbl.startsWith('BB')||lbl.startsWith('Fib'))?null:` ${lbl}: $${ctx.parsed.y?.toFixed(2)}`;const bars=getFilteredBars(lbl,tf);const price=bars[ctx.dataIndex]?.close;return` ${lbl}: ${price!=null?'$'+(price>=100?price.toFixed(2):price.toFixed(3)):ctx.parsed.y.toFixed(2)}`;},title:ctx=>ctx[0].label}}},scales:{x:{grid:GRID,ticks:{color:'#64748b',maxTicksLimit:10}},y:{grid:GRID,ticks:{color:'#64748b',callback:yFmt},title:{display:true,text:yTitle,color:'#64748b'}}}}});
-  buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();if(CFG.indicators.macd) buildMACDChart();if(CFG.indicators.stoch) buildStochChart();buildOBVChart();buildADXChart();buildCCIChart();buildWilliamsChart();buildROCChart();buildCHOPChart();buildMFIChart();
+  buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();if(CFG.indicators.macd) buildMACDChart();if(CFG.indicators.stoch) buildStochChart();buildOBVChart();buildADXChart();buildCCIChart();buildWilliamsChart();buildROCChart();buildCHOPChart();buildMFIChart();buildTSIChart();
 }
 function buildVolumeChart(){
   dc('volume');const wrap=document.getElementById('volume-wrap');const canvas=document.getElementById('volume-chart');
@@ -1849,6 +1851,40 @@ function buildMFIChart(){
     {label:'80',data:new Array(labels.length).fill(80),borderColor:'rgba(248,113,113,0.3)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false},
     {label:'20',data:new Array(labels.length).fill(20),borderColor:'rgba(74,222,128,0.3)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false},
   ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label==='MFI(14)'?` MFI: ${ctx.parsed.y?.toFixed(1)} ${ctx.parsed.y>80?'(Overbought)':ctx.parsed.y<20?'(Oversold)':''}`:null}}},scales:{x:{display:false,grid:{display:false}},y:{min:0,max:100,grid:{color:'#0d1726',drawBorder:false},ticks:{color:'#64748b',maxTicksLimit:3,callback:v=>v.toFixed(0)}}}}});
+}
+
+function calcTSI(closes,r=25,s=13){
+  // Double smoothed momentum
+  const n=closes.length;const result=new Array(n).fill(null);
+  if(n<r+s+2) return result;
+  const m=closes.map((c,i)=>i===0?0:c-closes[i-1]);
+  function ema(arr,p){
+    const out=new Array(arr.length).fill(null);
+    let e=arr[0];out[0]=e;
+    const k=2/(p+1);
+    for(let i=1;i<arr.length;i++){e=arr[i]*k+e*(1-k);out[i]=e;}
+    return out;
+  }
+  const sm1=ema(m,r);const sm2=ema(sm1.map(v=>v??0),s);
+  const absSm1=ema(m.map(Math.abs),r);const absSm2=ema(absSm1.map(v=>v??0),s);
+  for(let i=0;i<n;i++){if(sm2[i]!=null&&absSm2[i]!=null&&absSm2[i]!==0) result[i]=100*sm2[i]/absSm2[i];}
+  return result;
+}
+
+function buildTSIChart(){
+  dc('tsi');const wrap=document.getElementById('tsi-wrap');const canvas=document.getElementById('tsi-chart');
+  if(!canvas) return;
+  wrap&&(wrap.style.display=CFG.indicators.tsi?'block':'none');
+  if(!CFG.indicators.tsi) return;
+  const sym=CFG.symbols[0];const bars=getFilteredBars(sym,CFG.tf);if(bars.length<40) return;
+  const labels=bars.map(b=>{const d=new Date(b.ts*1000);return CFG.tf==='1D'?d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false}):d.toLocaleDateString('en-US',{month:'numeric',day:'numeric'});});
+  const tsiVals=calcTSI(bars.map(b=>b.close));
+  const signalVals=calcEMA(tsiVals.map(v=>v??0),7);
+  S.charts['tsi']=new Chart(canvas,{type:'line',data:{labels,datasets:[
+    {label:'TSI',data:tsiVals.map(v=>v!=null?+v.toFixed(2):null),borderColor:'rgba(99,102,241,0.85)',borderWidth:1.5,pointRadius:0,tension:0.2,fill:false,spanGaps:false},
+    {label:'Signal',data:signalVals.map(v=>v!=null?+v.toFixed(2):null),borderColor:'rgba(251,146,60,0.7)',borderWidth:1,pointRadius:0,tension:0.2,fill:false,spanGaps:false},
+    {label:'0',data:new Array(labels.length).fill(0),borderColor:'rgba(148,163,184,0.2)',borderWidth:1,pointRadius:0,fill:false},
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label!=='0'?` ${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2)}`:null}}},scales:{x:{display:false,grid:{display:false}},y:{grid:{color:'#0d1726',drawBorder:false},ticks:{color:'#64748b',maxTicksLimit:3,callback:v=>v.toFixed(0)}}}}});
 }
 
 function buildScatterChart(){
