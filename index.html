@@ -239,6 +239,12 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
     <input id="sym-search" placeholder="+ Symbol…" style="background:var(--surf2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px 8px;width:100px;transition:all 0.2s" autocomplete="off">
     <div id="sym-suggestions" style="display:none;position:absolute;top:100%;left:0;min-width:140px;background:var(--surf);border:1px solid var(--border);border-radius:4px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.4)"></div>
   </div>
+  <div id="accent-picker" style="display:flex;gap:3px;align-items:center" title="Accent color">
+    <span style="display:block;width:10px;height:10px;border-radius:50%;background:#22d3ee;cursor:pointer;border:1px solid rgba(255,255,255,0.2)" onclick="setAccent('#22d3ee','#0ea5e9')" title="Cyan"></span>
+    <span style="display:block;width:10px;height:10px;border-radius:50%;background:#a78bfa;cursor:pointer;border:1px solid rgba(255,255,255,0.2)" onclick="setAccent('#a78bfa','#7c3aed')" title="Purple"></span>
+    <span style="display:block;width:10px;height:10px;border-radius:50%;background:#4ade80;cursor:pointer;border:1px solid rgba(255,255,255,0.2)" onclick="setAccent('#4ade80','#16a34a')" title="Green"></span>
+    <span style="display:block;width:10px;height:10px;border-radius:50%;background:#fb923c;cursor:pointer;border:1px solid rgba(255,255,255,0.2)" onclick="setAccent('#fb923c','#ea580c')" title="Orange"></span>
+  </div>
   <button id="theme-btn" title="Toggle theme (T)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:4px 6px;transition:color 0.15s">☀</button>
   <button id="help-btn" title="Keyboard shortcuts (?)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:4px 6px;transition:color 0.15s;font-family:'JetBrains Mono',monospace">?</button>
   <button id="settings-btn" title="Settings (opens alerts too)">⚙<span id="alert-badge" style="display:none;background:var(--warn);color:#000;border-radius:50%;font-size:9px;font-weight:700;padding:0 4px;margin-left:2px;vertical-align:top;line-height:14px"></span></button>
@@ -985,6 +991,7 @@ function checkAlerts(){
       a.fired=true;
       const msg=`${a.sym} ${a.type==='above'?'crossed above':'dropped below'} $${a.price.toFixed(2)} — now $${q.price.toFixed(2)}`;
       showToast('🔔 '+msg,'warn');
+      playAlertTone(a.type);
       if(Notification.permission==='granted'){
         try{new Notification('correlate alert',{body:msg,icon:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><text y="24" font-size="24">🔔</text></svg>'});}catch{}
       }
@@ -994,6 +1001,29 @@ function checkAlerts(){
   updateAlertBadge();
 }
 function requestNotifPermission(){if('Notification' in window&&Notification.permission==='default') Notification.requestPermission();}
+function setAccent(darkColor,lightColor,save=true){
+  document.documentElement.style.setProperty('--accent',darkColor);
+  // Also update .theme-light --accent via inline style on :root
+  const existingStyle=document.getElementById('accent-override-style');
+  const st=existingStyle||document.createElement('style');
+  st.id='accent-override-style';
+  st.textContent=`.theme-light{--accent:${lightColor}!important}`;
+  if(!existingStyle) document.head.appendChild(st);
+  if(save) localStorage.setItem('correlate-accent',JSON.stringify({dark:darkColor,light:lightColor}));
+  // Update brand color
+  const brand=document.querySelector('.brand');if(brand) brand.style.color=darkColor;
+}
+function playAlertTone(type='above'){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const osc=ctx.createOscillator();const gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.frequency.setValueAtTime(type==='above'?880:440,ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(type==='above'?1320:330,ctx.currentTime+0.15);
+    gain.gain.setValueAtTime(0.3,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.5);
+    osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.5);
+  }catch{}
+}
 function updateAlertBadge(){
   const badge=document.getElementById('alert-badge');if(!badge) return;
   const active=CFG.alerts.filter(a=>!a.fired).length;
@@ -2561,6 +2591,9 @@ function init(){
     document.getElementById('theme-btn').textContent=light?'🌙':'☀';
   });
   if(localStorage.getItem('correlate-theme')==='light'){document.body.classList.add('theme-light');const tb=document.getElementById('theme-btn');if(tb) tb.textContent='🌙';}
+  // Restore accent color
+  const savedAccent=localStorage.getItem('correlate-accent');
+  if(savedAccent){try{const{dark,light}=JSON.parse(savedAccent);setAccent(dark,light,false);}catch{}}
   document.querySelectorAll('.bf-btn').forEach(btn=>btn.addEventListener('click',()=>doBackfill(btn.dataset.range)));
   document.querySelectorAll('.bf-btn').forEach(b=>b.classList.toggle('active',b.dataset.range===CFG.tf));
   document.querySelectorAll('.tf-btn').forEach(btn=>{
@@ -2657,6 +2690,10 @@ function init(){
     if(e.key==='2') switchTab('correlate');
     if(e.key==='3') switchTab('portfolio');
     if(e.key==='4') switchTab('ingest');
+    if(e.key==='c'||e.key==='C'){// Cycle chart type
+      const types=['line','ohlc','heikin'];const cur=types.indexOf(CFG.chartType);CFG.chartType=types[(cur+1)%types.length];saveCfg();
+      document.querySelectorAll('.ct-btn').forEach(b=>b.classList.toggle('active',b.dataset.ct===CFG.chartType));
+      buildMainChart();showToast(`Chart: ${CFG.chartType.toUpperCase()}`,'info');}
     if(e.key==='Escape'){closeSettings();document.getElementById('help-dialog')?.close();}
   });
   updateClock();setInterval(updateClock,15000);
