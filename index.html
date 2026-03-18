@@ -230,6 +230,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
             <button class="ind-btn active" data-ind="volume">Volume</button>
             <button class="ind-btn" data-ind="rsi">RSI</button>
             <button class="ind-btn" data-ind="macd">MACD</button>
+            <button class="ind-btn" data-ind="stoch">Stoch</button>
           </div>
           <button class="export-btn" id="export-btn" title="Export CSV">⬇ CSV</button>
         </div>
@@ -240,6 +241,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
     <div id="volume-wrap" style="height:68px;position:relative"><canvas id="volume-chart"></canvas></div>
     <div id="rsi-wrap" style="height:68px;position:relative;display:none"><canvas id="rsi-chart"></canvas></div>
     <div id="macd-wrap" style="height:80px;position:relative;display:none"><canvas id="macd-chart"></canvas></div>
+    <div id="stoch-wrap" style="height:68px;position:relative;display:none"><canvas id="stoch-chart"></canvas></div>
   </section>
   <section id="tab-correlate" class="main-tab">
     <div id="corr-header">
@@ -411,7 +413,7 @@ const SYMBOL_CFG={
 const YAHOO_RANGES={'1D':{interval:'5m',range:'1d'},'1W':{interval:'1h',range:'5d'},'1M':{interval:'1d',range:'1mo'},'3M':{interval:'1d',range:'3mo'},'YTD':{interval:'1d',range:'ytd'},'1Y':{interval:'1d',range:'1y'}};
 const RBH_RANGES={'1D':{interval:'5minute',span:'day'},'1W':{interval:'10minute',span:'week'},'1M':{interval:'day',span:'month'},'3M':{interval:'day',span:'3month'},'YTD':{interval:'day',span:'year'},'1Y':{interval:'day',span:'year'}};
 const CFG_VER=3;
-const CFG_DEF={_v:CFG_VER,source:'yahoo',corsProxy:'https://corsproxy.io/?',rbhToken:'',pollInterval:60,symbols:['SPY','USO','VIX'],tf:'1D',chartType:'line',priceMode:'indexed',indicators:{sma20:true,sma50:false,bb:false,volume:true,rsi:false,macd:false},alerts:[],portfolio:[]};
+const CFG_DEF={_v:CFG_VER,source:'yahoo',corsProxy:'https://corsproxy.io/?',rbhToken:'',pollInterval:60,symbols:['SPY','USO','VIX'],tf:'1D',chartType:'line',priceMode:'indexed',indicators:{sma20:true,sma50:false,bb:false,volume:true,rsi:false,macd:false,stoch:false},alerts:[],portfolio:[]};
 let CFG;
 try{
   const _s=JSON.parse(localStorage.getItem('correlate-cfg')||'{}');
@@ -505,6 +507,17 @@ function calcRSI(closes,period=14){
     rsi[i]=al===0?100:100-100/(1+ag/al);
   }
   return rsi;
+}
+function calcStochastic(bars,k=14,d=3){
+  const stochK=bars.map((_,i)=>{
+    if(i<k-1) return null;
+    const sl=bars.slice(i-k+1,i+1);
+    const lo=Math.min(...sl.map(b=>b.low||b.close));
+    const hi=Math.max(...sl.map(b=>b.high||b.close));
+    return hi===lo?50:(bars[i].close-lo)/(hi-lo)*100;
+  });
+  const stochD=calcSMA(stochK.map(v=>v??0),d).map((v,i)=>stochK[i]==null?null:v);
+  return{k:stochK,d:stochD};
 }
 function calcBB(closes,period=20,mult=2){
   const sma=calcSMA(closes,period);
@@ -728,6 +741,21 @@ function buildMACDChart(){
     {type:'line',label:'Signal',data:signal.map(v=>v==null?null:+v.toFixed(4)),borderColor:'#fbbf24',borderWidth:1.2,borderDash:[3,2],pointRadius:0,tension:0.1,fill:false,spanGaps:false,order:1}
   ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#0d1520',borderColor:'#1a2535',borderWidth:1,filter:item=>item.dataset.label!=='Histogram',callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(3)}`}}},scales:{x:{display:false,grid:{display:false}},y:{grid:{color:'#0d1726',drawBorder:false},ticks:{color:'#64748b',maxTicksLimit:3}}}}});
 }
+function buildStochChart(){
+  dc('stoch');const wrap=document.getElementById('stoch-wrap');const canvas=document.getElementById('stoch-chart');
+  if(!canvas) return;
+  wrap&&(wrap.style.display=CFG.indicators.stoch?'block':'none');
+  if(!CFG.indicators.stoch) return;
+  const sym=CFG.symbols[0];const bars=getFilteredBars(sym,CFG.tf);if(bars.length<16) return;
+  const {k,d}=calcStochastic(bars,14,3);
+  const labels=bars.map(b=>{const dt=new Date(b.ts*1000);return CFG.tf==='1D'?dt.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false}):dt.toLocaleDateString('en-US',{month:'numeric',day:'numeric'});});
+  S.charts['stoch']=new Chart(canvas,{type:'line',data:{labels,datasets:[
+    {label:'%K',data:k.map(v=>v==null?null:+v.toFixed(1)),borderColor:'#22d3ee',borderWidth:1.5,pointRadius:0,tension:0.1,fill:false,spanGaps:false},
+    {label:'%D',data:d.map(v=>v==null?null:+v.toFixed(1)),borderColor:'#fbbf24',borderWidth:1.2,borderDash:[3,2],pointRadius:0,tension:0.1,fill:false,spanGaps:false},
+    {label:'OB',data:new Array(bars.length).fill(80),borderColor:'rgba(248,113,113,0.3)',borderWidth:1,pointRadius:0,fill:false,borderDash:[4,2]},
+    {label:'OS',data:new Array(bars.length).fill(20),borderColor:'rgba(74,222,128,0.3)',borderWidth:1,pointRadius:0,fill:false,borderDash:[4,2]}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#0d1520',borderColor:'#1a2535',borderWidth:1,filter:item=>['%K','%D'].includes(item.dataset.label),callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(1)}`}}},scales:{x:{display:false,grid:{display:false}},y:{grid:{color:'#0d1726',drawBorder:false},min:0,max:100,ticks:{color:'#64748b',maxTicksLimit:3}}}}});
+}
 function buildOHLCChart(bars){
   const canvas=document.getElementById('main-chart');if(!canvas) return;
   if(S.charts['main']){S.charts['main'].destroy();delete S.charts['main'];}
@@ -764,7 +792,7 @@ function buildOHLCChart(bars){
   });
 }
 function buildMainChart(){
-  if(CFG.chartType==='ohlc'){const bars=getFilteredBars(CFG.symbols[0],CFG.tf);buildOHLCChart(bars);buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();if(CFG.indicators.macd) buildMACDChart();return;}
+  if(CFG.chartType==='ohlc'){const bars=getFilteredBars(CFG.symbols[0],CFG.tf);buildOHLCChart(bars);buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();if(CFG.indicators.macd) buildMACDChart();if(CFG.indicators.stoch) buildStochChart();return;}
   dc('main');const canvas=document.getElementById('main-chart');if(!canvas) return;
   const tf=CFG.tf;const syms=CFG.symbols.filter(s=>S.data[s]?.bars?.length>=2);if(!syms.length) return;
   const firstBars=getFilteredBars(syms[0],tf);
@@ -794,7 +822,7 @@ function buildMainChart(){
   const yTitle=priceMode==='price'?'Price ($)':'Indexed (base=100)';
   const yFmt=priceMode==='price'?v=>'$'+(v>=100?v.toFixed(0):v.toFixed(2)):v=>v.toFixed(1);
   S.charts['main']=new Chart(canvas,{type:'line',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{backgroundColor:'#0d1520',borderColor:'#1a2535',borderWidth:1,callbacks:{label:ctx=>{const lbl=ctx.dataset.label;if(!lbl||lbl.startsWith('BB')) return null;if(lbl.startsWith('SMA')) return` ${lbl}: $${ctx.parsed.y?.toFixed(2)}`;const bars=getFilteredBars(lbl,tf);const price=bars[ctx.dataIndex]?.close;return` ${lbl}: ${price!=null?'$'+(price>=100?price.toFixed(2):price.toFixed(3)):ctx.parsed.y.toFixed(2)}`;},title:ctx=>ctx[0].label}}},scales:{x:{grid:GRID,ticks:{color:'#64748b',maxTicksLimit:10}},y:{grid:GRID,ticks:{color:'#64748b',callback:yFmt},title:{display:true,text:yTitle,color:'#64748b'}}}}});
-  buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();if(CFG.indicators.macd) buildMACDChart();
+  buildVolumeChart();if(CFG.indicators.rsi) buildRSIChart();if(CFG.indicators.macd) buildMACDChart();if(CFG.indicators.stoch) buildStochChart();
 }
 function buildVolumeChart(){
   dc('volume');const wrap=document.getElementById('volume-wrap');const canvas=document.getElementById('volume-chart');
@@ -870,14 +898,20 @@ function buildCorrelationMatrix(){
 }
 const fmtP=p=>p>=100?p.toFixed(2):p.toFixed(3);
 const fmtChg=(v,pct)=>(v>=0?'+':'')+(pct?v.toFixed(2)+'%':fmtP(Math.abs(v)));
+function vixLabel(v){if(v==null) return'';if(v<15) return'😌 Calm';if(v<20) return'😐 Normal';if(v<25) return'😟 Elevated';if(v<30) return'😨 Fear';return'😱 Panic';}
 function updateTicker(){
   const inner=document.getElementById('ticker-inner');if(!inner) return;
+  const vixQ=S.data['VIX']?.quote;
+  const vixInfo=vixQ?.price?` <span style="font-size:10px;color:var(--warn);margin-left:4px">${vixLabel(vixQ.price)}</span>`:'';
   inner.innerHTML=CFG.symbols.map(sym=>{
     const q=S.data[sym]?.quote;const cfg=SYMBOL_CFG[sym]||{color:'#94a3b8'};
     if(!q||!q.price) return`<span class="tick-item"><span class="tick-sym" style="color:${cfg.color}">${sym}</span><span class="tick-price">—</span></span>`;
     const cls=q.changePct>=0?'pos':'neg';
-    return`<span class="tick-item"><span class="tick-sym" style="color:${cfg.color}">${sym}</span><span class="tick-price ${cls}">$${fmtP(q.price)}</span><span class="tick-chg ${cls}">${fmtChg(q.changePct,true)}</span></span>`;
+    const vol=q.volume>0?` <span style="font-size:10px;color:var(--text3)">${q.volume>=1e6?(q.volume/1e6).toFixed(1)+'M':q.volume>=1e3?(q.volume/1e3).toFixed(0)+'K':q.volume}</span>`:'';
+    return`<span class="tick-item"><span class="tick-sym" style="color:${cfg.color}">${sym}</span><span class="tick-price ${cls}">$${fmtP(q.price)}</span><span class="tick-chg ${cls}">${fmtChg(q.changePct,true)}</span>${sym==='VIX'?vixInfo:vol}</span>`;
   }).join('<span class="tick-sep">·</span>');
+  // Update last update time in status
+  if(S.lastUpdate){const sEl=document.getElementById('status-text');if(sEl&&S.status!=='demo'){const secs=Math.round((Date.now()-S.lastUpdate)/1000);sEl.title=`Updated ${secs}s ago`;}}
 }
 function updatePriceCards(){
   const grid=document.getElementById('price-grid');if(!grid) return;
@@ -1046,13 +1080,20 @@ function updateStatsRow(){
   }).join('');
 }
 const SECTOR_SYMS=['SPY','QQQ','DIA','IWM','XLK','XLF','XLE','XLV','XLC','XLI','XLY','XLP','XLU','XLRE','GLD','SLV','USO','TLT','HYG'];
+function demoSectorPct(sym){
+  // Stable pseudo-random % change based on symbol name
+  const h=sym.split('').reduce((a,c)=>((a<<5)-a)+c.charCodeAt(0),0)&0x7fffffff;
+  return((h%2001)-1000)/400; // range roughly -2.5 to +2.5%
+}
 function renderSectorHeatmap(){
   const el=document.getElementById('sector-heatmap');if(!el) return;
   const tiles=SECTOR_SYMS.map(sym=>{
     const q=S.data[sym]?.quote;const pct=q?.changePct??null;
-    const color=pct==null?'var(--surf2)':pct>2?'#16a34a':pct>1?'#15803d':pct>0.5?'#166534':pct>0?'#14532d':pct>-0.5?'#7f1d1d':pct>-1?'#991b1b':pct>-2?'#b91c1c':'#dc2626';
-    const fg=pct==null?'var(--text3)':'rgba(255,255,255,0.9)';
-    const label=pct!=null?(pct>=0?'+':'')+pct.toFixed(2)+'%':'—';
+    const displayPct=pct??(!CFG.source||CFG.source==='demo'?demoSectorPct(sym):null);
+    const dp=displayPct;
+    const color=dp==null?'var(--surf2)':dp>2?'#16a34a':dp>1?'#15803d':dp>0.5?'#166534':dp>0?'#14532d':dp>-0.5?'#7f1d1d':dp>-1?'#991b1b':dp>-2?'#b91c1c':'#dc2626';
+    const fg=dp==null?'var(--text3)':'rgba(255,255,255,0.9)';
+    const label=dp!=null?(dp>=0?'+':'')+dp.toFixed(2)+'%':'—';
     return`<div class="sector-tile" style="background:${color};color:${fg}" title="${sym}" onclick="addWatchSym('${sym}')"><div class="st-sym">${sym}</div><div class="st-chg">${label}</div></div>`;
   }).join('');
   el.innerHTML=tiles;
