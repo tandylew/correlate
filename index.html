@@ -944,7 +944,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       <div id="alerts-list"></div>
       <div class="add-alert-row">
         <select id="alert-sym"></select>
-        <select id="alert-type"><option value="above">Above</option><option value="below">Below</option></select>
+        <select id="alert-type"><option value="above">Above $</option><option value="below">Below $</option><option value="pct_up">Up % (day)</option><option value="pct_down">Down % (day)</option></select>
         <input id="alert-price" type="number" placeholder="price" step="0.01">
         <button class="btn btn-primary" id="alert-add-btn">+ Alert</button>
       </div>
@@ -1246,12 +1246,15 @@ function checkAlerts(){
   if(!CFG.alerts.length) return;
   CFG.alerts.forEach(a=>{
     if(a.fired) return;const q=S.data[a.sym]?.quote;if(!q?.price) return;
-    const triggered=a.type==='above'?q.price>=a.price:q.price<=a.price;
+    let triggered=false;let msg='';
+    if(a.type==='above'){triggered=q.price>=a.price;msg=`${a.sym} crossed above $${a.price.toFixed(2)} — now $${q.price.toFixed(2)}`;}
+    else if(a.type==='below'){triggered=q.price<=a.price;msg=`${a.sym} dropped below $${a.price.toFixed(2)} — now $${q.price.toFixed(2)}`;}
+    else if(a.type==='pct_up'&&q.changePercent!=null){triggered=q.changePercent>=a.price;msg=`${a.sym} up ≥${a.price}% today (+${q.changePercent.toFixed(2)}%)`;}
+    else if(a.type==='pct_down'&&q.changePercent!=null){triggered=q.changePercent<=-(a.price);msg=`${a.sym} down ≥${a.price}% today (${q.changePercent.toFixed(2)}%)`;}
     if(triggered){
       a.fired=true;
-      const msg=`${a.sym} ${a.type==='above'?'crossed above':'dropped below'} $${a.price.toFixed(2)} — now $${q.price.toFixed(2)}`;
       showToast('🔔 '+msg,'warn');
-      playAlertTone(a.type);
+      playAlertTone(a.type==='pct_down'||a.type==='below'?'below':'above');
       if(Notification.permission==='granted'){
         try{new Notification('correlate alert',{body:msg,icon:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><text y="24" font-size="24">🔔</text></svg>'});}catch{}
       }
@@ -2887,8 +2890,10 @@ function renderAlerts(){
   if(symSel) symSel.innerHTML=CFG.symbols.map(s=>`<option>${s}</option>`).join('');
   el.innerHTML=CFG.alerts.map((a,i)=>{
     const q=S.data[a.sym]?.quote;const cur=q?.price;const dist=cur?((a.type==='above'?a.price-cur:cur-a.price)/cur*100):null;
-    const distStr=dist!=null&&!a.fired?`<span style="font-size:10px;color:var(--text3)">${dist>=0?'·':''} ${dist.toFixed(2)}% away</span>`:'';
-    return`<div class="alert-row"><span class="alert-sym" style="color:${SYMBOL_CFG[a.sym]?.color||'#94a3b8'}">${a.sym}</span><span class="alert-type">${a.type}</span><span class="alert-price">$${a.price.toFixed(2)}</span>${distStr}${a.fired?'<span class="alert-fired">fired</span>':''}<button class="alert-remove" onclick="removeAlert(${i})">×</button></div>`;
+    const distStr=dist!=null&&!a.fired&&(a.type==='above'||a.type==='below')?`<span style="font-size:10px;color:var(--text3)">${dist>=0?'·':''} ${dist.toFixed(2)}% away</span>`:'';
+    const typeLabel={above:'Above $',below:'Below $',pct_up:'Up% ≥',pct_down:'Down% ≥'}[a.type]||a.type;
+    const priceLabel=(a.type==='pct_up'||a.type==='pct_down')?`${a.price}%`:`$${a.price.toFixed(2)}`;
+    return`<div class="alert-row"><span class="alert-sym" style="color:${SYMBOL_CFG[a.sym]?.color||'#94a3b8'}">${a.sym}</span><span class="alert-type">${typeLabel}</span><span class="alert-price">${priceLabel}</span>${distStr}${a.fired?'<span class="alert-fired">fired</span>':''}<button class="alert-remove" onclick="removeAlert(${i})">×</button></div>`;
   }).join('');
   updateAlertBadge();
 }
