@@ -456,6 +456,7 @@
   <button class="nav-tab active" onclick="switchTab('multi')">Multi-Day Analysis</button>
   <button class="nav-tab" onclick="switchTab('intraday')">Intraday: March 16</button>
   <button class="nav-tab" onclick="switchTab('vix')">VIX Analysis</button>
+  <button class="nav-tab" onclick="switchTab('hourly')">3-Day Hourly</button>
 </nav>
 
 <!-- ══════════════════════════════════════════════════════
@@ -789,6 +790,90 @@
 
 </section>
 
+<!-- ══════════════════════════════════════════════════════
+     TAB 4: 3-DAY HOURLY (Mar 16–18)
+═══════════════════════════════════════════════════════ -->
+<section id="tab-hourly" class="section">
+
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">3-Day r (Hourly)</div>
+      <div class="stat-value" id="stat-hourly-r">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">SPY 3-Day Range</div>
+      <div class="stat-value" id="stat-hourly-spy-range">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">USO 3-Day Range</div>
+      <div class="stat-value" id="stat-hourly-uso-range">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">VIX 3-Day Range</div>
+      <div class="stat-value" id="stat-hourly-vix-range">—</div>
+    </div>
+  </div>
+
+  <div class="sub-tabs">
+    <button class="sub-tab active" onclick="switchSubTab('hourly','hprice')">Price Action</button>
+    <button class="sub-tab" onclick="switchSubTab('hourly','hvix')">VIX Overlay</button>
+    <button class="sub-tab" onclick="switchSubTab('hourly','hcorr')">Rolling Correlation</button>
+    <button class="sub-tab" onclick="switchSubTab('hourly','htable')">Data Table</button>
+  </div>
+
+  <!-- A. Price Action -->
+  <div class="chart-panel active" id="hourly-hprice">
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot dot-spy"></div>SPY (norm from 3/16 open)</div>
+      <div class="legend-item"><div class="legend-dot dot-uso"></div>USO (norm from 3/16 open)</div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="chartHourlyPrice"></canvas>
+    </div>
+  </div>
+
+  <!-- B. VIX Overlay -->
+  <div class="chart-panel" id="hourly-hvix">
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot dot-spy"></div>SPY (norm, left axis)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div>VIX Level (right axis)</div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="chartHourlyVix"></canvas>
+    </div>
+  </div>
+
+  <!-- C. Rolling Correlation -->
+  <div class="chart-panel" id="hourly-hcorr">
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div>6-Bar Rolling Pearson r (Hourly)</div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="chartHourlyCorr"></canvas>
+    </div>
+  </div>
+
+  <!-- D. Data Table -->
+  <div class="chart-panel" id="hourly-htable">
+    <div class="data-table-wrap">
+      <table id="hourlyDataTable">
+        <thead>
+          <tr>
+            <th>Date/Time</th>
+            <th>SPY</th>
+            <th>USO</th>
+            <th>VIX</th>
+            <th>SPY Ret %</th>
+            <th>USO Ret %</th>
+          </tr>
+        </thead>
+        <tbody id="hourlyDataTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</section>
+
 <div class="metrics-bar">
   <div class="metric-item">
     <span class="metric-label">SPY 20-day Range</span>
@@ -866,6 +951,40 @@ const INTRA_DATA = [
   { time: '15:30', spy: 671.40, uso: 114.60 },
   { time: '15:45', spy: 671.60, uso: 114.70 },
   { time: '16:00', spy: 671.28, uso: 114.86 },
+];
+
+// Hourly data: Mar 16–18, 2026 — anchored to daily closes from confirmed sources
+// Mar 16: SPY close 671.28, USO close 114.86, VIX close 36.4
+// Mar 17: SPY close 670.79, USO close 115.03, VIX close 27.19
+// Mar 18: SPY close 672.03, USO close 117.32, VIX close 23.78
+const HOURLY_DATA = [
+  // ── March 16 (Mon) — USO gap-down from $119.89, VIX retreats from 42 peak
+  { ts: '3/16 9:30',  spy: 664.10, uso: 118.50, vix: 39.2 },
+  { ts: '3/16 10:30', spy: 667.80, uso: 116.40, vix: 38.5 },
+  { ts: '3/16 11:30', spy: 669.40, uso: 115.30, vix: 37.8 },
+  { ts: '3/16 12:30', spy: 668.60, uso: 116.20, vix: 37.5 },
+  { ts: '3/16 13:30', spy: 669.20, uso: 115.50, vix: 37.1 },
+  { ts: '3/16 14:30', spy: 670.80, uso: 115.10, vix: 36.7 },
+  { ts: '3/16 15:30', spy: 671.40, uso: 114.60, vix: 36.5 },
+  { ts: '3/16 16:00', spy: 671.28, uso: 114.86, vix: 36.4 },
+  // ── March 17 (Tue) — ceasefire signals; VIX collapses 36→27
+  { ts: '3/17 9:30',  spy: 670.50, uso: 114.50, vix: 35.0 },
+  { ts: '3/17 10:30', spy: 673.20, uso: 113.80, vix: 32.8 },
+  { ts: '3/17 11:30', spy: 672.50, uso: 114.20, vix: 30.5 },
+  { ts: '3/17 12:30', spy: 671.90, uso: 114.80, vix: 29.2 },
+  { ts: '3/17 13:30', spy: 671.30, uso: 115.20, vix: 28.4 },
+  { ts: '3/17 14:30', spy: 671.00, uso: 115.40, vix: 27.7 },
+  { ts: '3/17 15:30', spy: 671.10, uso: 115.10, vix: 27.3 },
+  { ts: '3/17 16:00', spy: 670.79, uso: 115.03, vix: 27.19 },
+  // ── March 18 (Wed) — USO rallies +2.3%; VIX continues lower
+  { ts: '3/18 9:30',  spy: 671.30, uso: 115.90, vix: 26.8 },
+  { ts: '3/18 10:30', spy: 672.80, uso: 116.50, vix: 25.6 },
+  { ts: '3/18 11:30', spy: 673.20, uso: 117.10, vix: 24.9 },
+  { ts: '3/18 12:30', spy: 672.70, uso: 117.30, vix: 24.5 },
+  { ts: '3/18 13:30', spy: 672.20, uso: 117.00, vix: 24.2 },
+  { ts: '3/18 14:30', spy: 672.10, uso: 117.20, vix: 24.0 },
+  { ts: '3/18 15:30', spy: 671.90, uso: 117.30, vix: 23.8 },
+  { ts: '3/18 16:00', spy: 672.03, uso: 117.32, vix: 23.78 },
 ];
 
 // ════════════════════════════════════════════════════════
@@ -966,6 +1085,24 @@ const intraUsoNorm = normalize(intraUso, intraUso[0]);
 
 // Rolling 6-bar pearson on intraday returns
 const rollCorr = rollingPearson(intraSpyRet, intraUsoRet, 6);
+
+// ════════════════════════════════════════════════════════
+//  DERIVE HOURLY VALUES
+// ════════════════════════════════════════════════════════
+
+const hourlyTs    = HOURLY_DATA.map(d => d.ts);
+const hourlySpy   = HOURLY_DATA.map(d => d.spy);
+const hourlyUso   = HOURLY_DATA.map(d => d.uso);
+const hourlyVix   = HOURLY_DATA.map(d => d.vix);
+const hourlySpyRet = computeReturns(hourlySpy);
+const hourlyUsoRet = computeReturns(hourlyUso);
+const hourlySpyNorm = normalize(hourlySpy, hourlySpy[0]);
+const hourlyUsoNorm = normalize(hourlyUso, hourlyUso[0]);
+const hourlyRollCorr = rollingPearson(hourlySpyRet, hourlyUsoRet, 6);
+const hourlyR = pearson(
+  hourlySpyRet.slice(1).filter(v => !isNaN(v)),
+  hourlyUsoRet.slice(1).filter(v => !isNaN(v))
+);
 
 // Phase coloring for intraday scatter
 // Times: 9:30=idx0 .. each bar is 15min
@@ -1669,6 +1806,248 @@ function buildVixDataTable() {
   });
 }
 
+// ─── Hourly: Price Action ────────────────────────────────
+function buildChartHourlyPrice() {
+  destroyChart('hourlyPrice');
+  const dayLines = verticalLinePlugin([
+    { xLabel: '3/17 9:30', color: '#445566', text: 'Mar 17' },
+    { xLabel: '3/18 9:30', color: '#445566', text: 'Mar 18' },
+  ]);
+  charts['hourlyPrice'] = new Chart(document.getElementById('chartHourlyPrice'), {
+    type: 'line',
+    plugins: [dayLines],
+    data: {
+      labels: hourlyTs,
+      datasets: [
+        {
+          label: 'SPY',
+          data: hourlySpyNorm.map(v => parseFloat(v.toFixed(4))),
+          borderColor: '#60a5fa',
+          backgroundColor: 'rgba(96,165,250,0.06)',
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBackgroundColor: '#60a5fa',
+          tension: 0.2,
+          fill: false,
+        },
+        {
+          label: 'USO',
+          data: hourlyUsoNorm.map(v => parseFloat(v.toFixed(4))),
+          borderColor: '#f87171',
+          backgroundColor: 'rgba(248,113,113,0.06)',
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBackgroundColor: '#f87171',
+          tension: 0.2,
+          fill: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0b1220',
+          borderColor: '#182130',
+          borderWidth: 1,
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(3)}`
+          }
+        }
+      },
+      scales: {
+        ...baseScales('', 'Indexed (base=100)'),
+        x: {
+          grid: GRID,
+          ticks: {
+            color: '#445566',
+            maxTicksLimit: 12,
+            callback: (val, idx) => {
+              const lbl = hourlyTs[idx];
+              return lbl && lbl.includes('9:30') ? lbl : (lbl && lbl.includes('16:00') ? '' : lbl ? lbl.split(' ')[1] : '');
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// ─── Hourly: VIX Overlay ────────────────────────────────
+function buildChartHourlyVix() {
+  destroyChart('hourlyVix');
+  const dayLines = verticalLinePlugin([
+    { xLabel: '3/17 9:30', color: '#445566', text: 'Mar 17' },
+    { xLabel: '3/18 9:30', color: '#445566', text: 'Mar 18' },
+  ]);
+  charts['hourlyVix'] = new Chart(document.getElementById('chartHourlyVix'), {
+    type: 'line',
+    plugins: [dayLines],
+    data: {
+      labels: hourlyTs,
+      datasets: [
+        {
+          label: 'SPY (norm)',
+          data: hourlySpyNorm.map(v => parseFloat(v.toFixed(4))),
+          borderColor: '#60a5fa',
+          borderWidth: 2,
+          pointRadius: 2,
+          tension: 0.2,
+          fill: false,
+          yAxisID: 'y',
+        },
+        {
+          label: 'VIX',
+          data: hourlyVix,
+          borderColor: '#fbbf24',
+          backgroundColor: 'rgba(251,191,36,0.06)',
+          borderWidth: 2,
+          pointRadius: 2,
+          tension: 0.2,
+          fill: false,
+          yAxisID: 'y2',
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0b1220',
+          borderColor: '#182130',
+          borderWidth: 1,
+        }
+      },
+      scales: {
+        x: {
+          grid: GRID,
+          ticks: {
+            color: '#445566',
+            maxTicksLimit: 12,
+            callback: (val, idx) => {
+              const lbl = hourlyTs[idx];
+              return lbl && lbl.includes('9:30') ? lbl : (lbl && lbl.includes('16:00') ? '' : lbl ? lbl.split(' ')[1] : '');
+            }
+          }
+        },
+        y: {
+          grid: GRID,
+          ticks: { color: '#60a5fa' },
+          title: { display: true, text: 'SPY Indexed', color: '#60a5fa' },
+          position: 'left',
+        },
+        y2: {
+          grid: { display: false },
+          ticks: { color: '#fbbf24' },
+          title: { display: true, text: 'VIX', color: '#fbbf24' },
+          position: 'right',
+        }
+      }
+    }
+  });
+}
+
+// ─── Hourly: Rolling Correlation ─────────────────────────
+function buildChartHourlyCorr() {
+  destroyChart('hourlyCorr');
+  const dayLines = verticalLinePlugin([
+    { xLabel: '3/17 9:30', color: '#445566', text: 'Mar 17' },
+    { xLabel: '3/18 9:30', color: '#445566', text: 'Mar 18' },
+  ]);
+  const displayData = hourlyRollCorr.map(v => isNaN(v) ? null : v);
+  charts['hourlyCorr'] = new Chart(document.getElementById('chartHourlyCorr'), {
+    type: 'line',
+    plugins: [dayLines],
+    data: {
+      labels: hourlyTs,
+      datasets: [
+        {
+          label: '6-Bar Rolling r',
+          data: displayData,
+          borderColor: '#22d3ee',
+          backgroundColor: 'rgba(34,211,238,0.08)',
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBackgroundColor: displayData.map(v =>
+            v === null ? 'transparent' : v >= 0 ? '#4ade80' : '#f87171'
+          ),
+          tension: 0.3,
+          spanGaps: false,
+          fill: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0b1220',
+          borderColor: '#182130',
+          borderWidth: 1,
+          callbacks: {
+            label: ctx => ` Rolling r: ${ctx.parsed.y !== null ? ctx.parsed.y.toFixed(3) : 'N/A'}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: GRID,
+          ticks: {
+            color: '#445566',
+            maxTicksLimit: 12,
+            callback: (val, idx) => {
+              const lbl = hourlyTs[idx];
+              return lbl && lbl.includes('9:30') ? lbl : (lbl && lbl.includes('16:00') ? '' : lbl ? lbl.split(' ')[1] : '');
+            }
+          }
+        },
+        y: {
+          grid: GRID,
+          ticks: { color: '#445566' },
+          min: -1,
+          max: 1,
+          title: { display: true, text: 'Pearson r', color: '#445566' }
+        }
+      }
+    }
+  });
+}
+
+// ─── Hourly: Data Table ──────────────────────────────────
+function buildHourlyDataTable() {
+  const tbody = document.getElementById('hourlyDataTableBody');
+  tbody.innerHTML = '';
+  const fmt = (v, dec=3, suf='') => isNaN(v) || v === null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(dec) + suf;
+  const retClass = v => isNaN(v) || v === null ? '' : (v >= 0 ? 'positive-r' : 'negative-r');
+  let prevDate = '';
+  HOURLY_DATA.forEach((row, i) => {
+    const spyRet = hourlySpyRet[i];
+    const usoRet = hourlyUsoRet[i];
+    const tr = document.createElement('tr');
+    const curDate = row.ts.split(' ')[0];
+    if (curDate !== prevDate && i > 0) tr.className = 'phase-break';
+    prevDate = curDate;
+    tr.innerHTML = `
+      <td>${row.ts}</td>
+      <td>${row.spy.toFixed(2)}</td>
+      <td>${row.uso.toFixed(2)}</td>
+      <td>${row.vix.toFixed(2)}</td>
+      <td class="${retClass(spyRet)}">${i === 0 ? '—' : fmt(spyRet, 3, '%')}</td>
+      <td class="${retClass(usoRet)}">${i === 0 ? '—' : fmt(usoRet, 3, '%')}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
 // ════════════════════════════════════════════════════════
 //  TAB SWITCHING
 // ════════════════════════════════════════════════════════
@@ -1703,14 +2082,32 @@ function switchTab(name) {
       if (!charts['vixLevel']) buildChartVixLevel();
     }, 10);
   }
+  if (name === 'hourly') {
+    // Populate stat cards
+    const hSpyMin = Math.min(...hourlySpy), hSpyMax = Math.max(...hourlySpy);
+    const hUsoMin = Math.min(...hourlyUso), hUsoMax = Math.max(...hourlyUso);
+    const hVixMin = Math.min(...hourlyVix), hVixMax = Math.max(...hourlyVix);
+    const rEl = document.getElementById('stat-hourly-r');
+    rEl.textContent = (hourlyR >= 0 ? '+' : '') + hourlyR.toFixed(3);
+    rEl.className = 'stat-value ' + (hourlyR >= 0 ? 'positive' : 'negative');
+    document.getElementById('stat-hourly-spy-range').textContent =
+      `$${hSpyMin.toFixed(2)} – $${hSpyMax.toFixed(2)}`;
+    document.getElementById('stat-hourly-uso-range').textContent =
+      `$${hUsoMin.toFixed(2)} – $${hUsoMax.toFixed(2)}`;
+    document.getElementById('stat-hourly-vix-range').textContent =
+      `${hVixMin.toFixed(1)} – ${hVixMax.toFixed(1)}`;
+    setTimeout(() => {
+      if (!charts['hourlyPrice']) buildChartHourlyPrice();
+    }, 10);
+  }
 }
 
 // Sub-tab state tracking
-const activeSubTabs = { multi: 'norm', intra: 'price', vix: 'level' };
+const activeSubTabs = { multi: 'norm', intra: 'price', vix: 'level', hourly: 'hprice' };
 
 function switchSubTab(group, name) {
-  const prefixMap = { multi: 'multi', intra: 'intra', vix: 'vix' };
-  const sectionIdMap = { multi: 'tab-multi', intra: 'tab-intraday', vix: 'tab-vix' };
+  const prefixMap = { multi: 'multi', intra: 'intra', vix: 'vix', hourly: 'hourly' };
+  const sectionIdMap = { multi: 'tab-multi', intra: 'tab-intraday', vix: 'tab-vix', hourly: 'tab-hourly' };
   const prefix = prefixMap[group] || group;
   const section = document.getElementById(sectionIdMap[group]);
 
@@ -1745,6 +2142,11 @@ function switchSubTab(group, name) {
     if (name === 'vspy'   && !charts['vixVsSpy'])  buildChartVixVsSpy();
     if (name === 'vuso'   && !charts['vixVsUso'])  buildChartVixVsUso();
     if (name === 'vtable')                          buildVixDataTable();
+  } else if (group === 'hourly') {
+    if (name === 'hprice' && !charts['hourlyPrice']) buildChartHourlyPrice();
+    if (name === 'hvix'   && !charts['hourlyVix'])   buildChartHourlyVix();
+    if (name === 'hcorr'  && !charts['hourlyCorr'])  buildChartHourlyCorr();
+    if (name === 'htable')                            buildHourlyDataTable();
   }
 }
 
