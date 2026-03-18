@@ -338,6 +338,10 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
     <div id="stoch-wrap" style="height:68px;position:relative;display:none"><canvas id="stoch-chart"></canvas></div>
     <div id="obv-wrap" style="height:68px;position:relative;display:none"><canvas id="obv-chart"></canvas></div>
     <div id="adx-wrap" style="height:80px;position:relative;display:none"><canvas id="adx-chart"></canvas></div>
+    <div id="ta-summary-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Technical Analysis Summary</div>
+      <div id="ta-summary-grid" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
     <div id="sr-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Support & Resistance — <span id="sr-sym-label"></span></div>
       <div id="sr-levels"></div>
@@ -1489,7 +1493,7 @@ function updateRegimeBar(){
   }
   bar.innerHTML=items.length?items.join('<span style="color:var(--border2);margin:0 2px">|</span>'):'<span style="color:var(--text3);font-size:10px">Loading market data…</span>';
 }
-function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate') updateCorrStats();if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();}updateCorrSelectors();updateWatchlistChips();}
+function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate') updateCorrStats();if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();}updateCorrSelectors();updateWatchlistChips();}
 function startPolling(){stopPolling();if(CFG.pollInterval<=0||CFG.source==='demo') return;S.pollTimer=setInterval(()=>fetchAllSymbols(),CFG.pollInterval*1000);}
 function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
 function startDemoTick(){stopDemoTick();S.demoTicker=setInterval(tickDemoData,10000);}
@@ -2436,6 +2440,64 @@ function renderRSRanking(){
         <div style="width:${barW}%;height:100%;background:${barColor};border-radius:2px;${rs<0?'margin-left:auto':''}"></div>
       </div>
       <div style="font-size:9px;color:var(--text3)">vs SPY ${spyRet>=0?'+':''}${spyRet.toFixed(2)}%</div>
+    </div>`;
+  }).join('');
+}
+// === TECHNICAL ANALYSIS SUMMARY ===
+function calcTASummary(sym){
+  const bars=getFilteredBars(sym,CFG.tf);if(bars.length<30) return null;
+  const closes=bars.map(b=>b.close);const n=closes.length;const last=closes[n-1];
+  const indicators=[];
+  // RSI(14)
+  const rsiArr=calcRSI(closes,14);const rsi=rsiArr[n-1];
+  if(rsi!=null){const sig=rsi>70?'SELL':rsi<30?'BUY':'NEUTRAL';indicators.push({name:'RSI(14)',value:rsi.toFixed(1),sig});}
+  // MACD
+  const {macd,signal}=calcMACD(closes);const ml=macd[n-1],sl=signal[n-1],pm=macd[n-2],ps=signal[n-2];
+  if(ml!=null&&sl!=null){const cross=pm<ps&&ml>sl?'BUY':pm>ps&&ml<sl?'SELL':ml>sl?'BUY':'SELL';indicators.push({name:'MACD(12,26)',value:(ml-sl).toFixed(3),sig:cross});}
+  // SMA20
+  const sma20=calcSMA(closes,20)[n-1];if(sma20!=null){indicators.push({name:'SMA20',value:sma20.toFixed(2),sig:last>sma20?'BUY':'SELL'});}
+  // SMA50
+  const sma50=calcSMA(closes,50)[n-1];if(sma50!=null){indicators.push({name:'SMA50',value:sma50.toFixed(2),sig:last>sma50?'BUY':'SELL'});}
+  // EMA20
+  const ema20Arr=calcEMA(closes,20);const ema20=ema20Arr[n-1];if(ema20!=null){indicators.push({name:'EMA20',value:ema20.toFixed(2),sig:last>ema20?'BUY':'SELL'});}
+  // BB position
+  const bbData=calcBB(closes,20,2);const bb=bbData[n-1];
+  if(bb){const pos=(last-bb.lower)/(bb.upper-bb.lower||1)*100;const sig=pos>80?'SELL':pos<20?'BUY':'NEUTRAL';indicators.push({name:'BB(20,2)',value:pos.toFixed(0)+'%',sig});}
+  // Stochastic
+  const stoch=calcStochastic(bars,14,3);const sk=stoch[n-1]?.k;
+  if(sk!=null){indicators.push({name:'Stoch(14)',value:sk.toFixed(1),sig:sk>80?'SELL':sk<20?'BUY':'NEUTRAL'});}
+  // ADX
+  const adxData=calcADX(bars,14);const {adx,plusDI,minusDI}=adxData[n-1]||{};
+  if(adx!=null){const trend=adx>25;const dir=plusDI>minusDI?'BUY':'SELL';indicators.push({name:'ADX(14)',value:adx.toFixed(1),sig:trend?dir:'NEUTRAL'});}
+  // Momentum (10-day ROC)
+  if(n>=11){const roc=((closes[n-1]/closes[n-11])-1)*100;indicators.push({name:'ROC(10)',value:(roc>=0?'+':'')+roc.toFixed(2)+'%',sig:roc>1?'BUY':roc<-1?'SELL':'NEUTRAL'});}
+  // CCI-like: price vs typical band
+  if(n>=20){const tp=bars.slice(-20).map(b=>((b.high||b.close)+(b.low||b.close)+b.close)/3);const tpMean=tp.reduce((a,b)=>a+b,0)/20;const tpStd=Math.sqrt(tp.reduce((s,v)=>s+(v-tpMean)**2,0)/20)||1;const cci=(((bars[n-1].high||last)+(bars[n-1].low||last)+last)/3-tpMean)/(0.015*tpStd);indicators.push({name:'CCI(20)',value:cci.toFixed(0),sig:cci>100?'SELL':cci<-100?'BUY':'NEUTRAL'});}
+  const buys=indicators.filter(i=>i.sig==='BUY').length;
+  const sells=indicators.filter(i=>i.sig==='SELL').length;
+  const neutrals=indicators.filter(i=>i.sig==='NEUTRAL').length;
+  return{indicators,buys,sells,neutrals,overall:buys>sells+neutrals?'STRONG BUY':buys>sells?'BUY':sells>buys+neutrals?'STRONG SELL':sells>buys?'SELL':'NEUTRAL'};
+}
+function renderTASummary(){
+  const el=document.getElementById('ta-summary-grid');if(!el) return;
+  const syms=CFG.symbols.slice(0,6);
+  el.innerHTML=syms.map(sym=>{
+    const cfg=SYMBOL_CFG[sym]||{color:'#94a3b8'};
+    const ta=calcTASummary(sym);
+    if(!ta) return`<div class="signal-card" style="min-width:140px"><span class="signal-sym" style="color:${cfg.color}">${sym}</span><span class="signal-detail">No data</span></div>`;
+    const overallCls=ta.overall.includes('BUY')?'sig-buy':ta.overall.includes('SELL')?'sig-sell':'sig-neutral';
+    const bgColor=ta.overall.includes('BUY')?'rgba(74,222,128,0.05)':ta.overall.includes('SELL')?'rgba(248,113,113,0.05)':'';
+    return`<div class="signal-card" style="flex-direction:column;gap:5px;min-width:160px;${bgColor?'background:'+bgColor:''}">
+      <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+        <span class="signal-sym" style="color:${cfg.color}">${sym}</span>
+        <span class="signal-pill ${overallCls}">${ta.overall}</span>
+      </div>
+      <div style="display:flex;gap:10px;font-size:10px">
+        <span class="pos">▲ ${ta.buys}</span>
+        <span class="neg">▼ ${ta.sells}</span>
+        <span style="color:var(--text3)">= ${ta.neutrals}</span>
+      </div>
+      <div style="display:flex;gap:1px;width:100%">${ta.indicators.map(i=>`<div title="${i.name}: ${i.value}" style="flex:1;height:3px;background:${i.sig==='BUY'?'var(--pos)':i.sig==='SELL'?'var(--neg)':'var(--border2)'};border-radius:1px"></div>`).join('')}</div>
     </div>`;
   }).join('');
 }
