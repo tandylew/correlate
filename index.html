@@ -237,6 +237,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
   </div>
   <div id="sym-search-wrap" style="position:relative;flex-shrink:0">
     <input id="sym-search" placeholder="+ Symbol…" style="background:var(--surf2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px 8px;width:100px;transition:all 0.2s" autocomplete="off">
+    <div id="sym-suggestions" style="display:none;position:absolute;top:100%;left:0;min-width:140px;background:var(--surf);border:1px solid var(--border);border-radius:4px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.4)"></div>
   </div>
   <button id="theme-btn" title="Toggle theme (T)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:4px 6px;transition:color 0.15s">☀</button>
   <button id="help-btn" title="Keyboard shortcuts (?)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:4px 6px;transition:color 0.15s;font-family:'JetBrains Mono',monospace">?</button>
@@ -483,6 +484,7 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       <button class="btn btn-primary" id="p-add-btn">+ Add Holding</button>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div id="pnl-waterfall-wrap" style="flex:4;min-width:200px;min-height:170px;background:var(--surf);border:1px solid var(--border);border-radius:4px;overflow:hidden;position:relative"><div style="font-size:10px;color:var(--text3);padding:8px 12px;text-transform:uppercase;letter-spacing:0.08em">P&L Waterfall</div><canvas id="pnl-waterfall" style="height:140px !important"></canvas></div>
       <div id="portfolio-chart-wrap" style="flex:3;min-width:200px;min-height:200px;background:var(--surf);border:1px solid var(--border);border-radius:4px;overflow:hidden;position:relative"><div style="font-size:10px;color:var(--text3);padding:8px 12px;text-transform:uppercase;letter-spacing:0.08em">Value Over Time</div><canvas id="portfolio-chart" style="height:170px !important"></canvas></div>
       <div id="alloc-chart-wrap" style="flex:1;min-width:150px;min-height:200px;background:var(--surf);border:1px solid var(--border);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;align-items:center;padding:8px"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;width:100%;padding-bottom:4px">Allocation</div><canvas id="alloc-chart" style="max-width:150px;max-height:150px"></canvas><div id="alloc-legend" style="width:100%;font-size:10px;margin-top:4px"></div></div>
     </div>
@@ -1600,7 +1602,7 @@ function updateRegimeBar(){
   }
   bar.innerHTML=items.length?items.join('<span style="color:var(--border2);margin:0 2px">|</span>'):'<span style="color:var(--text3);font-size:10px">Loading market data…</span>';
 }
-function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderLinRegPanel();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();}if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();}updateCorrSelectors();updateWatchlistChips();}
+function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderLinRegPanel();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();}if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();}updateCorrSelectors();updateWatchlistChips();}
 function startPolling(){stopPolling();if(CFG.pollInterval<=0||CFG.source==='demo') return;S.pollTimer=setInterval(()=>fetchAllSymbols(),CFG.pollInterval*1000);}
 function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
 function startDemoTick(){stopDemoTick();S.demoTicker=setInterval(tickDemoData,10000);}
@@ -1611,7 +1613,7 @@ function switchTab(tab){
   if(panel) panel.classList.add('active');if(btn) btn.classList.add('active');
   if(tab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();if(CFG.source!=='demo'&&Object.keys(yieldCache).length===0) setTimeout(fetchYieldCurve,200);}
   if(tab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();}
-  if(tab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();}
+  if(tab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();}
 }
 function switchIngest(type){
   document.querySelectorAll('.ingest-panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.ingest-nav-btn').forEach(b=>b.classList.remove('active'));
@@ -2365,24 +2367,42 @@ function init(){
   // Open settings with alerts
   document.getElementById('settings-btn')?.addEventListener('click',()=>{openSettings();renderAlerts();});
   document.getElementById('help-btn')?.addEventListener('click',()=>document.getElementById('help-dialog')?.showModal());
+  const POPULAR_SYMS=['SPY','QQQ','IWM','DIA','GLD','SLV','TLT','HYG','XLF','XLK','XLE','XLV','XLI','XLU','XLP','XLRE','VXX','UVXY','USO','UNG','AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','BRK.B','JPM','V','JNJ','WMT','UNH','XOM','CVX','BAC','MA','HD','PG','ABBV','MRK','PFE','LLY','KO','PEP','COST','AVGO','AMD','INTC','VIX','DXY','BTC-USD','ETH-USD','GC=F','CL=F','ES=F','NQ=F'];
   const symSearchEl=document.getElementById('sym-search');
+  const symSuggestEl=document.getElementById('sym-suggestions');
+  function addSymFromSearch(sym){
+    sym=sym.trim().toUpperCase();if(!sym) return;
+    if(!CFG.symbols.includes(sym)){
+      CFG.symbols.push(sym);
+      if(!SYMBOL_CFG[sym]){const c=['#a78bfa','#4ade80','#f97316','#e879f9','#38bdf8'];SYMBOL_CFG[sym]={name:sym,color:c[CFG.symbols.length%c.length],vol:0.001,seed:sym.charCodeAt(0)};}
+      saveCfg();renderSymbolChips();updateCorrSelectors();updateWatchlistChips();
+      if(CFG.source!=='demo') fetchAllSymbols(CFG.tf);else updateUI();
+      showToast(`Added ${sym}`,'success');
+    } else showToast(`${sym} already in watchlist`,'warn');
+    if(symSearchEl) symSearchEl.value='';
+    if(symSuggestEl){symSuggestEl.style.display='none';symSuggestEl.innerHTML='';}
+  }
   if(symSearchEl){
+    symSearchEl.addEventListener('input',()=>{
+      const q=symSearchEl.value.trim().toUpperCase();
+      if(!symSuggestEl) return;
+      if(!q){symSuggestEl.style.display='none';return;}
+      const matches=POPULAR_SYMS.filter(s=>s.startsWith(q)&&!CFG.symbols.includes(s)).slice(0,8);
+      if(!matches.length){symSuggestEl.style.display='none';return;}
+      symSuggestEl.innerHTML=matches.map(s=>`<div class="sym-suggest-item" data-sym="${s}" style="padding:6px 10px;cursor:pointer;font-size:11px;font-family:'JetBrains Mono',monospace;border-bottom:1px solid var(--border);color:var(--text)">${s}</div>`).join('');
+      symSuggestEl.style.display='block';
+      symSuggestEl.querySelectorAll('.sym-suggest-item').forEach(item=>{
+        item.addEventListener('mousedown',e=>{e.preventDefault();addSymFromSearch(item.dataset.sym);});
+        item.addEventListener('mouseover',()=>item.style.background='var(--surf2)');
+        item.addEventListener('mouseout',()=>item.style.background='');
+      });
+    });
     symSearchEl.addEventListener('keydown',e=>{
-      if(e.key==='Enter'){
-        const sym=symSearchEl.value.trim().toUpperCase();if(!sym) return;
-        if(!CFG.symbols.includes(sym)){
-          CFG.symbols.push(sym);
-          if(!SYMBOL_CFG[sym]){const c=['#a78bfa','#4ade80','#f97316','#e879f9','#38bdf8'];SYMBOL_CFG[sym]={name:sym,color:c[CFG.symbols.length%c.length],vol:0.001,seed:sym.charCodeAt(0)};}
-          saveCfg();renderSymbolChips();updateCorrSelectors();updateWatchlistChips();
-          if(CFG.source!=='demo') fetchAllSymbols(CFG.tf);else updateUI();
-          showToast(`Added ${sym}`,'success');
-        } else showToast(`${sym} already in watchlist`,'warn');
-        symSearchEl.value='';
-      }
-      if(e.key==='Escape') symSearchEl.blur();
+      if(e.key==='Enter'){addSymFromSearch(symSearchEl.value);}
+      if(e.key==='Escape'){symSearchEl.blur();if(symSuggestEl) symSuggestEl.style.display='none';}
     });
     symSearchEl.addEventListener('focus',()=>symSearchEl.style.width='140px');
-    symSearchEl.addEventListener('blur',()=>symSearchEl.style.width='100px');
+    symSearchEl.addEventListener('blur',()=>{symSearchEl.style.width='100px';setTimeout(()=>{if(symSuggestEl) symSuggestEl.style.display='none';},200);});
   }
   document.getElementById('theme-btn')?.addEventListener('click',()=>{
     const light=document.body.classList.toggle('theme-light');
@@ -2922,6 +2942,33 @@ function buildVolumeProfile(){
     levelsEl.innerHTML=`<div style="color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;font-size:9px;margin-bottom:4px">Key Levels</div>${hvnHtml}<div style="margin:6px 0;border-top:1px solid var(--border)"></div>${lvnHtml}<div style="margin-top:8px;color:var(--warn);font-size:9px">● Current: $${curPrice.toFixed(2)}</div>`;
   }
 }
+// === P&L WATERFALL CHART ===
+let waterfallChart=null;
+function buildPnLWaterfall(){
+  const canvas=document.getElementById('pnl-waterfall');if(!canvas) return;
+  if(waterfallChart){waterfallChart.destroy();waterfallChart=null;}
+  if(!CFG.portfolio.length) return;
+  const items=CFG.portfolio.map(h=>{
+    const q=S.data[h.sym]?.quote;const cur=q?.price||h.avgCost;
+    const pnl=(cur-h.avgCost)*h.shares;return{sym:h.sym,pnl,color:SYMBOL_CFG[h.sym]?.color||'#94a3b8'};
+  }).filter(h=>h.pnl!==0);
+  if(!items.length) return;
+  const totalPnl=items.reduce((s,h)=>s+h.pnl,0);
+  const allItems=[...items,{sym:'TOTAL',pnl:totalPnl,color:totalPnl>=0?'rgba(74,222,128,0.9)':'rgba(248,113,113,0.9)',isTotal:true}];
+  // Compute cumulative running starts for waterfall
+  let running=0;const starts=[];const vals=[];const colors=[];
+  allItems.forEach((item,i)=>{
+    if(item.isTotal){starts.push(0);vals.push(item.pnl);}
+    else{starts.push(running);vals.push(item.pnl);running+=item.pnl;}
+    colors.push(item.pnl>=0?'rgba(74,222,128,0.75)':'rgba(248,113,113,0.75)');
+    if(item.isTotal) colors[i]=item.pnl>=0?'rgba(74,222,128,0.9)':'rgba(248,113,113,0.9)';
+  });
+  waterfallChart=new Chart(canvas,{type:'bar',data:{labels:allItems.map(x=>x.sym),datasets:[
+    {label:'base',data:starts,backgroundColor:'transparent',borderWidth:0,skipNull:true},
+    {label:'P&L',data:vals,backgroundColor:colors,borderRadius:3,borderSkipped:false}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>{if(ctx.datasetIndex===0) return null;const v=ctx.parsed.y;return` $${v>=0?'+':''}${v.toFixed(0)}`;},title:ctx=>ctx[0].label}}},scales:{x:{grid:GRID,ticks:{color:'#64748b',font:{size:10}}},y:{grid:GRID,ticks:{color:'#64748b',callback:v=>'$'+(Math.abs(v)>=1000?(v/1000).toFixed(1)+'k':v.toFixed(0))},stacked:true}}}});
+}
+
 // === PORTFOLIO STRESS TEST ===
 const STRESS_SCENARIOS=[
   {name:'Market Crash -20%',spy:-20,uso:-15,vix:+80,other:-18},
