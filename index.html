@@ -378,6 +378,22 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       <div id="gap-summary" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;font-size:11px"></div>
       <div id="gap-list" style="display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto"></div>
     </div>
+    <div id="dow-heatmap-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Day-of-Week Return Heatmap — <span id="dow-sym-label"></span></div>
+      <div id="dow-heatmap" style="overflow-x:auto"></div>
+    </div>
+    <div id="mtf-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Multi-Timeframe Trend Overview</div>
+      <div id="mtf-grid" style="overflow-x:auto"></div>
+    </div>
+    <div id="pivot-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Pivot Points — <span id="pivot-sym-label"></span></div>
+      <div id="pivot-grid" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
+    <div id="econ-cal-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Economic Calendar — Upcoming Events</div>
+      <div id="econ-cal-list" style="display:flex;flex-direction:column;gap:4px"></div>
+    </div>
   </section>
   <section id="tab-correlate" class="main-tab">
     <div id="corr-header">
@@ -911,10 +927,19 @@ function checkAlerts(){
   CFG.alerts.forEach(a=>{
     if(a.fired) return;const q=S.data[a.sym]?.quote;if(!q?.price) return;
     const triggered=a.type==='above'?q.price>=a.price:q.price<=a.price;
-    if(triggered){a.fired=true;showToast(`🔔 ${a.sym} ${a.type} $${a.price.toFixed(2)}`,'warn');saveCfg();}
+    if(triggered){
+      a.fired=true;
+      const msg=`${a.sym} ${a.type==='above'?'crossed above':'dropped below'} $${a.price.toFixed(2)} — now $${q.price.toFixed(2)}`;
+      showToast('🔔 '+msg,'warn');
+      if(Notification.permission==='granted'){
+        try{new Notification('correlate alert',{body:msg,icon:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><text y="24" font-size="24">🔔</text></svg>'});}catch{}
+      }
+      saveCfg();
+    }
   });
   updateAlertBadge();
 }
+function requestNotifPermission(){if('Notification' in window&&Notification.permission==='default') Notification.requestPermission();}
 function updateAlertBadge(){
   const badge=document.getElementById('alert-badge');if(!badge) return;
   const active=CFG.alerts.filter(a=>!a.fired).length;
@@ -1556,7 +1581,7 @@ function updateRegimeBar(){
   }
   bar.innerHTML=items.length?items.join('<span style="color:var(--border2);margin:0 2px">|</span>'):'<span style="color:var(--text3);font-size:10px">Loading market data…</span>';
 }
-function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderLinRegPanel();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();renderGapAnalysis();renderDrawdownPanel();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate'){updateCorrStats();renderSpreadPanel();}if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();}updateCorrSelectors();updateWatchlistChips();}
+function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderLinRegPanel();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate'){updateCorrStats();renderSpreadPanel();}if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();}updateCorrSelectors();updateWatchlistChips();}
 function startPolling(){stopPolling();if(CFG.pollInterval<=0||CFG.source==='demo') return;S.pollTimer=setInterval(()=>fetchAllSymbols(),CFG.pollInterval*1000);}
 function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
 function startDemoTick(){stopDemoTick();S.demoTicker=setInterval(tickDemoData,10000);}
@@ -1566,7 +1591,7 @@ function switchTab(tab){
   const panel=document.getElementById('tab-'+tab);const btn=document.querySelector(`.nav-btn[data-tab="${tab}"]`);
   if(panel) panel.classList.add('active');if(btn) btn.classList.add('active');
   if(tab==='correlate'){updateCorrStats();renderSpreadPanel();if(CFG.source!=='demo'&&Object.keys(yieldCache).length===0) setTimeout(fetchYieldCurve,200);}
-  if(tab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderGapAnalysis();renderDrawdownPanel();}
+  if(tab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();}
   if(tab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();}
 }
 function switchIngest(type){
@@ -2445,6 +2470,7 @@ function init(){
     if(e.key==='Escape'){closeSettings();document.getElementById('help-dialog')?.close();}
   });
   updateClock();setInterval(updateClock,15000);
+  requestNotifPermission();
   if(CFG.source==='demo'){initDemoData();updateUI();startDemoTick();}
   else{initDemoData();updateUI();fetchAllSymbols(CFG.tf).then(()=>{startPolling();setTimeout(fetchSectorData,1000);setTimeout(renderNewsHeadlines,2000);});}
 }
@@ -2877,6 +2903,88 @@ function buildVolumeProfile(){
     levelsEl.innerHTML=`<div style="color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;font-size:9px;margin-bottom:4px">Key Levels</div>${hvnHtml}<div style="margin:6px 0;border-top:1px solid var(--border)"></div>${lvnHtml}<div style="margin-top:8px;color:var(--warn);font-size:9px">● Current: $${curPrice.toFixed(2)}</div>`;
   }
 }
+// === DAY-OF-WEEK RETURN HEATMAP ===
+function renderDOWHeatmap(){
+  const sym=CFG.symbols[0];if(!sym) return;
+  const el=document.getElementById('dow-heatmap');const lbl=document.getElementById('dow-sym-label');
+  if(!el) return;if(lbl) lbl.textContent=sym;
+  // Prefer 1Y or 3M data; use all bars in the store
+  const allBars=S.data[sym]?.bars?.['1Y']||S.data[sym]?.bars?.['3M']||S.data[sym]?.bars?.[CFG.tf]||[];
+  if(allBars.length<10){el.innerHTML='<span style="color:var(--text3);font-size:11px">Need more data (1Y recommended).</span>';return;}
+  const days=['Mon','Tue','Wed','Thu','Fri'];
+  const buckets={Mon:[],Tue:[],Wed:[],Thu:[],Fri:[]};
+  for(let i=1;i<allBars.length;i++){
+    const b=allBars[i];const prev=allBars[i-1];
+    const d=new Date((b.ts||0)*1000);const dow=d.getDay();// 1=Mon…5=Fri
+    const ret=(b.close-prev.close)/prev.close*100;
+    if(dow>=1&&dow<=5) buckets[days[dow-1]].push(ret);
+  }
+  const stats=days.map(d=>{
+    const vals=buckets[d];if(!vals.length) return{day:d,mean:0,count:0,pos:0,neg:0};
+    const mean=vals.reduce((s,v)=>s+v,0)/vals.length;
+    const pos=vals.filter(v=>v>0).length;const neg=vals.filter(v=>v<0).length;
+    return{day:d,mean,count:vals.length,pos,neg};
+  });
+  const absMax=Math.max(...stats.map(s=>Math.abs(s.mean)),0.01);
+  el.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:11px">
+    <thead><tr>${stats.map(s=>`<th style="padding:4px 8px;color:var(--text3);font-weight:500;text-align:center">${s.day}</th>`).join('')}</tr></thead>
+    <tbody><tr>${stats.map(s=>{
+      const intensity=Math.min(1,Math.abs(s.mean)/absMax);
+      const bg=s.mean>=0?`rgba(74,222,128,${0.1+intensity*0.5})`:`rgba(248,113,113,${0.1+intensity*0.5})`;
+      const col=s.mean>=0?'var(--pos)':'var(--neg)';
+      return`<td style="text-align:center;padding:8px;background:${bg};border:1px solid var(--border)">
+        <div style="font-size:13px;font-weight:700;color:${col}">${s.mean>=0?'+':''}${s.mean.toFixed(2)}%</div>
+        <div style="font-size:9px;color:var(--text3);margin-top:2px">${s.count} sessions</div>
+        <div style="font-size:9px;color:var(--text3)">↑${s.pos} ↓${s.neg}</div>
+      </td>`;
+    }).join('')}</tr></tbody>
+  </table>`;
+}
+
+// === MULTI-TIMEFRAME TREND OVERVIEW ===
+function renderMTFOverview(){
+  const el=document.getElementById('mtf-grid');if(!el) return;
+  const TFS=['1D','1W','1M','3M','1Y'];
+  const syms=CFG.symbols.slice(0,6);
+  if(!syms.length){el.innerHTML='<span style="color:var(--text3);font-size:11px">No symbols loaded.</span>';return;}
+  // Build table: rows=symbols, cols=timeframes
+  const rows=syms.map(sym=>{
+    const cells=TFS.map(tf=>{
+      const bars=S.data[sym]?.bars?.[tf]||[];
+      if(bars.length<5) return{trend:'—',ret:null,rsi:null};
+      const closes=bars.map(b=>b.close);
+      const last=closes[closes.length-1];const first=closes[0];
+      const ret=(last-first)/first*100;
+      // SMA trend check
+      const sma20=closes.length>=20?closes.slice(-20).reduce((s,v)=>s+v,0)/20:null;
+      const sma50=closes.length>=50?closes.slice(-50).reduce((s,v)=>s+v,0)/50:null;
+      let trend='neutral';
+      if(sma20&&sma50){trend=last>sma20&&sma20>sma50?'bull':last<sma20&&sma20<sma50?'bear':'neutral';}
+      else if(sma20){trend=last>sma20?'bull':'bear';}
+      // RSI
+      const rsiArr=calcRSI(closes.slice(-30));const rsi=rsiArr[rsiArr.length-1];
+      return{trend,ret,rsi};
+    });
+    return{sym,cells};
+  });
+  const trendIcon=(t)=>t==='bull'?'<span style="color:var(--pos)">▲</span>':t==='bear'?'<span style="color:var(--neg)">▼</span>':'<span style="color:var(--text3)">–</span>';
+  el.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:11px">
+    <thead><tr><th style="text-align:left;padding:4px 8px;color:var(--text3)">Symbol</th>${TFS.map(t=>`<th style="padding:4px 8px;color:var(--text3);text-align:center">${t}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(r=>`<tr>${[
+      `<td style="padding:5px 8px;color:var(--text);font-weight:600;white-space:nowrap">${r.sym}</td>`,
+      ...r.cells.map(c=>{
+        if(c.ret===null) return`<td style="text-align:center;padding:5px 8px;color:var(--text3)">—</td>`;
+        const retCol=c.ret>=0?'var(--pos)':'var(--neg)';
+        return`<td style="text-align:center;padding:5px 8px;border:1px solid var(--border)">
+          <div>${trendIcon(c.trend)} <span style="color:${retCol}">${c.ret>=0?'+':''}${c.ret.toFixed(1)}%</span></div>
+          ${c.rsi!=null?`<div style="font-size:9px;color:var(--text3)">RSI ${c.rsi.toFixed(0)}</div>`:''}
+        </td>`;
+      })
+    ].join('')}</tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
 // === GAP ANALYSIS ===
 function renderGapAnalysis(){
   const sym=CFG.symbols[0];if(!sym) return;
@@ -3024,6 +3132,111 @@ function calcBlackScholes(){
     </div>
   </div>
   <div style="margin-top:8px;font-size:10px;color:var(--text3)">Spot: $${curPrice.toFixed(2)} | Strike: $${K} | DTE: ${dte} | IV: ${(iv*100).toFixed(1)}% | r: ${(rf*100).toFixed(2)}% | Type: ${type.toUpperCase()}</div>`;
+}
+
+// === PIVOT POINTS ===
+function renderPivotPoints(){
+  const sym=CFG.symbols[0];if(!sym) return;
+  const el=document.getElementById('pivot-grid');const lbl=document.getElementById('pivot-sym-label');
+  if(!el) return;if(lbl) lbl.textContent=sym;
+  const bars=getFilteredBars(sym,CFG.tf);if(bars.length<2) return;
+  // Use previous period bar for pivot calculation
+  const prev=bars[bars.length-2];const last=bars[bars.length-1];
+  const H=prev.high||prev.close;const L=prev.low||prev.close;const C=prev.close;
+  const O=last.open||last.close;
+  // Classic pivot
+  const P=(H+L+C)/3;
+  const R1=2*P-L;const S1=2*P-H;
+  const R2=P+(H-L);const S2=P-(H-L);
+  const R3=R1+(H-L);const S3=S1-(H-L);
+  // Fibonacci pivots
+  const fR1=P+0.382*(H-L);const fR2=P+0.618*(H-L);const fR3=P+1.0*(H-L);
+  const fS1=P-0.382*(H-L);const fS2=P-0.618*(H-L);const fS3=P-1.0*(H-L);
+  const cur=S.data[sym]?.quote?.price||last.close;
+  const fmt=(v)=>`$${v>=100?v.toFixed(2):v.toFixed(3)}`;
+  const cell=(label,val,type)=>{
+    const diff=((val-cur)/cur*100);const isAbove=val>cur;
+    const col=type==='R'?'var(--pos)':type==='S'?'var(--neg)':'var(--warn)';
+    return`<div style="background:var(--surf2);border:1px solid var(--border);border-radius:4px;padding:7px 10px;min-width:90px;text-align:center">
+      <div style="font-size:9px;color:${col};text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px">${label}</div>
+      <div style="font-size:13px;font-weight:700;color:var(--text)">${fmt(val)}</div>
+      <div style="font-size:9px;color:var(--text3)">${isAbove?'+':''}${diff.toFixed(2)}%</div>
+    </div>`;
+  };
+  el.innerHTML=`<div style="width:100%;font-size:10px;color:var(--text3);margin-bottom:6px">Classic Pivots (prev bar H=${fmt(H)} L=${fmt(L)} C=${fmt(C)})</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${cell('R3',R3,'R')}${cell('R2',R2,'R')}${cell('R1',R1,'R')}
+      ${cell('PP',P,'P')}
+      ${cell('S1',S1,'S')}${cell('S2',S2,'S')}${cell('S3',S3,'S')}
+    </div>
+    <div style="width:100%;font-size:10px;color:var(--text3);margin:8px 0 6px">Fibonacci Pivots</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${cell('fR3',fR3,'R')}${cell('fR2',fR2,'R')}${cell('fR1',fR1,'R')}
+      ${cell('PP',P,'P')}
+      ${cell('fS1',fS1,'S')}${cell('fS2',fS2,'S')}${cell('fS3',fS3,'S')}
+    </div>`;
+}
+
+// === ECONOMIC CALENDAR ===
+const ECON_EVENTS=[
+  // Fed FOMC 2025-2026 (approximate)
+  {date:'2025-01-29',event:'FOMC Rate Decision',cat:'fed',impact:'high'},
+  {date:'2025-03-19',event:'FOMC Rate Decision',cat:'fed',impact:'high'},
+  {date:'2025-05-07',event:'FOMC Rate Decision',cat:'fed',impact:'high'},
+  {date:'2025-06-18',event:'FOMC Rate Decision',cat:'fed',impact:'high'},
+  {date:'2025-07-30',event:'FOMC Rate Decision',cat:'fed',impact:'high'},
+  {date:'2025-09-17',event:'FOMC Rate Decision',cat:'fed',impact:'high'},
+  {date:'2025-11-05',event:'FOMC Rate Decision',cat:'fed',impact:'high'},
+  {date:'2025-12-17',event:'FOMC Rate Decision',cat:'fed',impact:'high'},
+  {date:'2026-01-28',event:'FOMC Rate Decision',cat:'fed',impact:'high'},
+  {date:'2026-03-18',event:'FOMC Rate Decision',cat:'fed',impact:'high'},
+  {date:'2026-05-06',event:'FOMC Rate Decision',cat:'fed',impact:'high'},
+  {date:'2026-06-17',event:'FOMC Rate Decision',cat:'fed',impact:'high'},
+  {date:'2026-07-29',event:'FOMC Rate Decision',cat:'fed',impact:'high'},
+  {date:'2026-09-16',event:'FOMC Rate Decision',cat:'fed',impact:'high'},
+  {date:'2026-11-04',event:'FOMC Rate Decision',cat:'fed',impact:'high'},
+  {date:'2026-12-16',event:'FOMC Rate Decision',cat:'fed',impact:'high'},
+  // Jackson Hole
+  {date:'2025-08-21',event:'Jackson Hole Symposium',cat:'fed',impact:'high'},
+  {date:'2026-08-20',event:'Jackson Hole Symposium',cat:'fed',impact:'high'},
+  // Quarterly earnings seasons (approximate start)
+  {date:'2025-04-11',event:'Q1 Earnings Season Begins',cat:'earnings',impact:'med'},
+  {date:'2025-07-11',event:'Q2 Earnings Season Begins',cat:'earnings',impact:'med'},
+  {date:'2025-10-10',event:'Q3 Earnings Season Begins',cat:'earnings',impact:'med'},
+  {date:'2026-01-09',event:'Q4 Earnings Season Begins',cat:'earnings',impact:'med'},
+  {date:'2026-04-10',event:'Q1 Earnings Season Begins',cat:'earnings',impact:'med'},
+  // Triple/Quad Witching (3rd Friday Mar/Jun/Sep/Dec)
+  {date:'2025-03-21',event:'Quad Witching',cat:'options',impact:'med'},
+  {date:'2025-06-20',event:'Quad Witching',cat:'options',impact:'med'},
+  {date:'2025-09-19',event:'Quad Witching',cat:'options',impact:'med'},
+  {date:'2025-12-19',event:'Quad Witching',cat:'options',impact:'med'},
+  {date:'2026-03-20',event:'Quad Witching',cat:'options',impact:'med'},
+  {date:'2026-06-19',event:'Quad Witching',cat:'options',impact:'med'},
+  {date:'2026-09-18',event:'Quad Witching',cat:'options',impact:'med'},
+  {date:'2026-12-18',event:'Quad Witching',cat:'options',impact:'med'},
+];
+function renderEconCalendar(){
+  const el=document.getElementById('econ-cal-list');if(!el) return;
+  const now=new Date();now.setHours(0,0,0,0);
+  const upcoming=ECON_EVENTS.map(e=>{
+    const d=new Date(e.date+'T00:00:00');
+    const diff=Math.round((d-now)/(1000*60*60*24));
+    return{...e,diff,dateObj:d};
+  }).filter(e=>e.diff>=-1).sort((a,b)=>a.diff-b.diff).slice(0,12);
+  const catColor={fed:'var(--accent)',earnings:'var(--pos)',options:'var(--warn)'};
+  const catIcon={fed:'🏛',earnings:'📊',options:'⚡'};
+  el.innerHTML=upcoming.map(e=>{
+    const isPast=e.diff<0;const isToday=e.diff===0;const isSoon=e.diff<=7&&e.diff>=0;
+    const dayStr=isToday?'TODAY':isPast?'Yesterday':`${e.diff}d`;
+    const bgStyle=isToday?'background:rgba(251,191,36,0.1);':'';
+    return`<div style="display:flex;align-items:center;gap:10px;padding:5px 8px;border-radius:3px;border-bottom:1px solid var(--border);${bgStyle}">
+      <span style="min-width:60px;font-size:10px;color:${isSoon?'var(--warn)':'var(--text3)'};font-weight:${isToday?700:400}">${dayStr}</span>
+      <span style="font-size:11px;color:${catColor[e.cat]||'var(--text3)'}">${catIcon[e.cat]||'•'}</span>
+      <span style="font-size:11px;color:var(--text)">${e.event}</span>
+      <span style="font-size:10px;color:var(--text3);margin-left:auto">${e.date}</span>
+      ${e.impact==='high'?'<span style="font-size:9px;color:var(--neg);background:rgba(248,113,113,0.15);padding:1px 5px;border-radius:3px">HIGH</span>':'<span style="font-size:9px;color:var(--warn);background:rgba(251,191,36,0.15);padding:1px 5px;border-radius:3px">MED</span>'}
+    </div>`;
+  }).join('');
 }
 
 document.addEventListener('DOMContentLoaded',init);
