@@ -508,6 +508,26 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       </div>
       <div id="fib-ext-result" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     </div>
+    <div id="screener-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+        <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3)">Symbol Screener</span>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <label style="font-size:10px;color:var(--text3)">RSI &lt;</label>
+          <input id="scr-rsi-max" type="number" value="70" style="width:50px;background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:3px 5px;color:var(--text);font-size:11px">
+          <label style="font-size:10px;color:var(--text3)">RSI &gt;</label>
+          <input id="scr-rsi-min" type="number" value="0" style="width:50px;background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:3px 5px;color:var(--text);font-size:11px">
+          <label style="font-size:10px;color:var(--text3)">Above SMA</label>
+          <select id="scr-sma" style="background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:3px 5px;color:var(--text);font-size:11px">
+            <option value="">Any</option>
+            <option value="20">SMA20</option>
+            <option value="50">SMA50</option>
+            <option value="200">SMA200</option>
+          </select>
+          <button onclick="runScreener()" style="background:var(--accent);color:#000;border:none;border-radius:3px;padding:4px 10px;font-size:11px;cursor:pointer;font-weight:600">Screen</button>
+        </div>
+      </div>
+      <div id="screener-results" style="overflow-x:auto"></div>
+    </div>
   </section>
   <section id="tab-correlate" class="main-tab">
     <div id="corr-header">
@@ -4305,6 +4325,54 @@ function renderIVRank(){
       <div style="font-size:9px;color:${r.rankColor};text-align:right;margin-top:2px">${r.rankLabel}</div>
     </div>
   `).join('');
+}
+
+// === SYMBOL SCREENER ===
+function runScreener(){
+  const rsiMax=parseFloat(document.getElementById('scr-rsi-max')?.value||100);
+  const rsiMin=parseFloat(document.getElementById('scr-rsi-min')?.value||0);
+  const smaPeriod=parseInt(document.getElementById('scr-sma')?.value||0);
+  const el=document.getElementById('screener-results');if(!el) return;
+  const syms=CFG.symbols;if(!syms.length){el.innerHTML='<span style="font-size:11px;color:var(--text3)">No symbols loaded</span>';return;}
+
+  const rows=syms.map(sym=>{
+    const bars=getFilteredBars(sym,CFG.tf);if(bars.length<30) return null;
+    const closes=bars.map(b=>b.close);
+    const last=closes[closes.length-1];
+    const rsiArr=calcRSI(closes,14);const rsi=rsiArr[rsiArr.length-1];
+    const mac=calcMACD(closes);
+    const macdLine=mac.macd[mac.macd.length-1];const signal=mac.signal[mac.signal.length-1];
+    const bb=calcBB(closes);const bbu=bb.upper[bb.upper.length-1];const bbl=bb.lower[bb.lower.length-1];
+    const bbPct=bbu&&bbl?((last-bbl)/(bbu-bbl)*100):null;
+    let smaVal=null;
+    if(smaPeriod){const smaArr=calcSMA(closes,smaPeriod);smaVal=smaArr[smaArr.length-1];}
+    const dayRet=closes.length>1?(last/closes[closes.length-2]-1)*100:null;
+    const mom5=closes.length>5?(last/closes[closes.length-6]-1)*100:null;
+
+    // Filter
+    if(rsi!=null&&(rsi>rsiMax||rsi<rsiMin)) return null;
+    if(smaPeriod&&smaVal&&last<smaVal) return null;
+
+    const macdBull=macdLine!=null&&signal!=null&&macdLine>signal;
+    return{sym,last,rsi,macdBull,bbPct,dayRet,mom5,smaVal};
+  }).filter(Boolean);
+
+  if(!rows.length){el.innerHTML='<span style="font-size:11px;color:var(--text3)">No symbols match the filter criteria</span>';return;}
+
+  el.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:11px">
+    <thead><tr style="border-bottom:1px solid var(--border)">
+      ${['Symbol','Price','Day%','Mom5','RSI','MACD','BB%'].map(h=>`<th style="text-align:left;padding:5px 8px;color:var(--text3);font-weight:600;font-size:10px">${h}</th>`).join('')}
+    </tr></thead>
+    <tbody>${rows.map(r=>`<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:5px 8px;font-weight:700;color:var(--text)">${r.sym}</td>
+      <td style="padding:5px 8px;color:var(--text)">$${r.last.toFixed(2)}</td>
+      <td style="padding:5px 8px;color:${r.dayRet>=0?'var(--pos)':'var(--neg)'}">${r.dayRet!=null?(r.dayRet>=0?'+':'')+r.dayRet.toFixed(2)+'%':'—'}</td>
+      <td style="padding:5px 8px;color:${r.mom5>=0?'var(--pos)':'var(--neg)'}">${r.mom5!=null?(r.mom5>=0?'+':'')+r.mom5.toFixed(2)+'%':'—'}</td>
+      <td style="padding:5px 8px;color:${r.rsi!=null?(r.rsi>70?'var(--neg)':r.rsi<30?'var(--pos)':'var(--text)'):'var(--text3)'}">${r.rsi!=null?r.rsi.toFixed(1):'—'}</td>
+      <td style="padding:5px 8px;color:${r.macdBull?'var(--pos)':'var(--neg)'}">${r.macdBull?'▲ Bull':'▼ Bear'}</td>
+      <td style="padding:5px 8px;color:${r.bbPct!=null?(r.bbPct>80?'var(--neg)':r.bbPct<20?'var(--pos)':'var(--text)'):'var(--text3)'}">${r.bbPct!=null?r.bbPct.toFixed(0)+'%':'—'}</td>
+    </tr>`).join('')}</tbody>
+  </table><div style="font-size:10px;color:var(--text3);margin-top:5px">${rows.length} symbol(s) match</div>`;
 }
 
 // === MOMENTUM DIVERGENCE SCANNER ===
