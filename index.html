@@ -338,6 +338,10 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
     <div id="stoch-wrap" style="height:68px;position:relative;display:none"><canvas id="stoch-chart"></canvas></div>
     <div id="obv-wrap" style="height:68px;position:relative;display:none"><canvas id="obv-chart"></canvas></div>
     <div id="adx-wrap" style="height:80px;position:relative;display:none"><canvas id="adx-chart"></canvas></div>
+    <div id="linreg-panel-wrap" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Linear Regression Channel — <span id="linreg-sym"></span></div>
+      <div id="linreg-panel"></div>
+    </div>
     <div id="ta-summary-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Technical Analysis Summary</div>
       <div id="ta-summary-grid" style="display:flex;gap:8px;flex-wrap:wrap"></div>
@@ -1493,7 +1497,7 @@ function updateRegimeBar(){
   }
   bar.innerHTML=items.length?items.join('<span style="color:var(--border2);margin:0 2px">|</span>'):'<span style="color:var(--text3);font-size:10px">Loading market data…</span>';
 }
-function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate') updateCorrStats();if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();}updateCorrSelectors();updateWatchlistChips();}
+function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderLinRegPanel();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate') updateCorrStats();if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();}updateCorrSelectors();updateWatchlistChips();}
 function startPolling(){stopPolling();if(CFG.pollInterval<=0||CFG.source==='demo') return;S.pollTimer=setInterval(()=>fetchAllSymbols(),CFG.pollInterval*1000);}
 function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
 function startDemoTick(){stopDemoTick();S.demoTicker=setInterval(tickDemoData,10000);}
@@ -2442,6 +2446,44 @@ function renderRSRanking(){
       <div style="font-size:9px;color:var(--text3)">vs SPY ${spyRet>=0?'+':''}${spyRet.toFixed(2)}%</div>
     </div>`;
   }).join('');
+}
+// === LINEAR REGRESSION + TREND CHANNEL ===
+function calcLinReg(closes){
+  if(!closes||closes.length<10) return null;
+  const n=closes.length;
+  let sx=0,sy=0,sxy=0,sx2=0;
+  for(let i=0;i<n;i++){sx+=i;sy+=closes[i];sxy+=i*closes[i];sx2+=i*i;}
+  const slope=(n*sxy-sx*sy)/(n*sx2-sx*sx)||0;
+  const intercept=(sy-slope*sx)/n;
+  const predicted=closes.map((_,i)=>intercept+slope*i);
+  const residuals=closes.map((v,i)=>v-predicted[i]);
+  const stdRes=Math.sqrt(residuals.reduce((s,v)=>s+v*v,0)/n);
+  const lastPred=intercept+slope*(n-1);
+  const nextPred=intercept+slope*n;
+  const rsq=1-residuals.reduce((s,v)=>s+v*v,0)/(closes.reduce((s,v,i)=>{const m=sy/n;return s+(v-m)*(v-m);},0)||1);
+  return{slope,intercept,predicted,stdRes,lastPred,nextPred,rsq,upperChannel:lastPred+1.5*stdRes,lowerChannel:lastPred-1.5*stdRes};
+}
+function renderLinRegPanel(){
+  const el=document.getElementById('linreg-panel');if(!el) return;
+  const sym=CFG.symbols[0];if(!sym) return;
+  const bars=getFilteredBars(sym,CFG.tf);
+  const symLbl=document.getElementById('linreg-sym');if(symLbl) symLbl.textContent=sym;
+  if(!bars||bars.length<10){el.innerHTML='<span style="color:var(--text3);font-size:10px">Need data for regression</span>';return;}
+  const closes=bars.map(b=>b.close);const lr=calcLinReg(closes);if(!lr) return;
+  const price=closes[closes.length-1];
+  const pctFromCenter=((price/lr.lastPred)-1)*100;
+  const pctToUpper=((lr.upperChannel/price)-1)*100;
+  const pctToLower=((lr.lowerChannel/price)-1)*100;
+  const slopeDir=lr.slope>0?'▲':'▼';const slopeCls=lr.slope>0?'pos':'neg';
+  el.innerHTML=`<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px">
+    <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">Slope/Bar</div><div class="${slopeCls}" style="font-weight:700">${slopeDir} $${Math.abs(lr.slope).toFixed(3)}</div></div>
+    <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">R²</div><div style="font-weight:700">${lr.rsq.toFixed(3)}</div></div>
+    <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">Predicted</div><div style="font-weight:700">$${lr.lastPred.toFixed(2)}</div></div>
+    <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">vs Center</div><div class="${pctFromCenter>=0?'pos':'neg'}" style="font-weight:700">${pctFromCenter>=0?'+':''}${pctFromCenter.toFixed(2)}%</div></div>
+    <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">Upper (+1.5σ)</div><div class="pos" style="font-weight:700">$${lr.upperChannel.toFixed(2)} (${pctToUpper>=0?'+':''}${pctToUpper.toFixed(2)}%)</div></div>
+    <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">Lower (-1.5σ)</div><div class="neg" style="font-weight:700">$${lr.lowerChannel.toFixed(2)} (${pctToLower.toFixed(2)}%)</div></div>
+    <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">Next Bar Est.</div><div style="font-weight:700">$${lr.nextPred.toFixed(2)}</div></div>
+  </div>`;
 }
 // === TECHNICAL ANALYSIS SUMMARY ===
 function calcTASummary(sym){
