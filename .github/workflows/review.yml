@@ -48,7 +48,7 @@ jobs:
           echo "Reviewing: $REVIEW_URL"
 
           # Fetch page HTML
-          PAGE_HTML=$(curl -s --max-time 15 "$REVIEW_URL" || echo "FETCH_FAILED")
+          PAGE_HTML=$(curl -sL --max-time 15 "$REVIEW_URL" || echo "FETCH_FAILED")
 
           # Build JSON payload using a temp file to avoid quoting issues
           cat > /tmp/payload.json << 'PAYLOAD_EOF'
@@ -95,15 +95,16 @@ jobs:
 
           echo "Raw API response: $RESPONSE"
 
-          # Extract the text content from the response
+          # Extract the text content from the response, stripping markdown code fences
           REVIEW_JSON=$(echo "$RESPONSE" | python3 -c "
-          import json, sys
+          import json, sys, re
           resp = json.load(sys.stdin)
           content = resp.get('content', [{}])
-          if content:
-              print(content[0].get('text', '{}'))
-          else:
-              print('{}')
+          text = content[0].get('text', '{}') if content else '{}'
+          # Strip markdown code fences (e.g. \`\`\`json ... \`\`\`)
+          text = re.sub(r'^\s*\`\`\`(?:json)?\s*\n?', '', text)
+          text = re.sub(r'\n?\s*\`\`\`\s*$', '', text)
+          print(text.strip())
           " 2>/dev/null || echo '{}')
 
           echo "Review JSON: $REVIEW_JSON"
