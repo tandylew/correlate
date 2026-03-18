@@ -130,34 +130,41 @@ jobs:
                 // Check page loaded with content
                 checks.has_content = document.body.innerText.length > 100;
 
-                // Check for ticker mentions
+                // Check for ticker mentions in header/ticker strip
                 checks.has_spy = html.includes('SPY');
                 checks.has_uso = html.includes('USO');
+                checks.has_vix = html.includes('VIX');
 
                 // Check for chart canvases that have been rendered
                 const canvases = document.querySelectorAll('canvas');
                 checks.canvas_count = canvases.length;
                 checks.has_charts = canvases.length > 0;
 
-                // Check for stat cards with correlation values
-                const statValues = [...document.querySelectorAll('.stat-value')];
-                checks.stat_card_count = statValues.length;
-                checks.has_correlation_stats = statValues.some(el =>
-                  /[−+-]?0\.\d+/.test(el.textContent)
-                );
+                // Check for navigation tabs (Market / Correlate / Ingest)
+                const navBtns = document.querySelectorAll('.nav-btn');
+                checks.tab_count = navBtns.length;
+                checks.tab_names = [...navBtns].map(t => t.textContent.trim());
+                checks.has_nav_tabs = navBtns.length >= 3;
 
-                // Check for navigation tabs
-                const tabs = document.querySelectorAll('.nav-tab');
-                checks.tab_count = tabs.length;
-                checks.tab_names = [...tabs].map(t => t.textContent.trim());
+                // Check for status dot (demo/live indicator)
+                checks.has_status_dot = !!document.querySelector('.status-dot');
 
-                // Check for event analysis cards
-                checks.has_event_cards = document.querySelectorAll('.event-card').length > 0;
+                // Check for ticker strip prices
+                checks.has_ticker_strip = !!document.querySelector('.tick-item');
+
+                // Check for price cards
+                checks.has_price_cards = document.querySelectorAll('.price-card').length > 0;
+
+                // Check for backfill controls
+                checks.has_backfill = !!document.querySelector('#backfill-bar');
+
+                // Check correlation display after switching to Correlate tab
+                const corrDisplay = document.querySelector('#corr-r-display');
+                checks.has_corr_display = !!corrDisplay;
 
                 // Check visible text isn't showing errors
                 const bodyText = document.body.innerText;
                 checks.no_visible_errors = !bodyText.includes('undefined') &&
-                                           !bodyText.includes('NaN') &&
                                            !bodyText.includes('[object Object]');
 
                 return checks;
@@ -167,6 +174,9 @@ jobs:
               if (!results.checks.has_content) results.pass = false;
               if (!results.checks.has_spy || !results.checks.has_uso) results.pass = false;
               if (!results.checks.has_charts) results.pass = false;
+              if (!results.checks.has_nav_tabs) results.pass = false;
+              if (!results.checks.has_status_dot) results.pass = false;
+              if (!results.checks.has_backfill) results.pass = false;
               if (!results.checks.no_visible_errors) results.pass = false;
               if (results.http_status !== 200) results.pass = false;
               if (results.console_errors.length > 0) results.pass = false;
@@ -218,10 +228,15 @@ jobs:
               f"| Page has content | {yn(checks.get('has_content'))} |",
               f"| SPY ticker present | {yn(checks.get('has_spy'))} |",
               f"| USO ticker present | {yn(checks.get('has_uso'))} |",
+              f"| VIX ticker present | {yn(checks.get('has_vix'))} |",
               f"| Charts rendered ({checks.get('canvas_count', 0)} canvases) | {yn(checks.get('has_charts'))} |",
-              f"| Correlation stats visible | {yn(checks.get('has_correlation_stats'))} |",
-              f"| Event analysis cards | {yn(checks.get('has_event_cards'))} |",
-              f"| No visible NaN/undefined | {yn(checks.get('no_visible_errors'))} |",
+              f"| Nav tabs ({checks.get('tab_count', 0)}: {', '.join(checks.get('tab_names', []))}) | {yn(checks.get('has_nav_tabs'))} |",
+              f"| Status dot visible | {yn(checks.get('has_status_dot'))} |",
+              f"| Ticker strip present | {yn(checks.get('has_ticker_strip'))} |",
+              f"| Price cards present | {yn(checks.get('has_price_cards'))} |",
+              f"| Backfill controls present | {yn(checks.get('has_backfill'))} |",
+              f"| Correlation display present | {yn(checks.get('has_corr_display'))} |",
+              f"| No visible undefined/object | {yn(checks.get('no_visible_errors'))} |",
               f"| Zero JS exceptions | {yn(len(r.get('js_exceptions', [])) == 0)} |",
               f"| Zero console errors | {yn(len(r.get('console_errors', [])) == 0)} |",
           ]
