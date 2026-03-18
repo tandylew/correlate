@@ -818,6 +818,14 @@ small{font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;display:b
       </div>
       <div id="kelly-result" style="margin-top:8px;display:flex;gap:10px;flex-wrap:wrap"></div>
     </div>
+    <div id="vol-surface-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Volatility Term Structure (HV at Different Windows)</div>
+      <div id="vol-surface-grid" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
+    <div id="position-heatmap-panel" style="background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Portfolio Position Heatmap</div>
+      <div id="position-heatmap-grid" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+    </div>
   </section>
   <section id="tab-ingest" class="main-tab">
     <div id="ingest-nav">
@@ -2076,7 +2084,7 @@ function updateRegimeBar(){
   }
   bar.innerHTML=items.length?items.join('<span style="color:var(--border2);margin:0 2px">|</span>'):'<span style="color:var(--text3);font-size:10px">Loading market data…</span>';
 }
-function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderLinRegPanel();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();renderTradeIdeas();renderTrailingStops();renderSymCompare();renderVolumeSpikes();renderMeanRevScores();renderRegimeDetail();renderCandlePatterns();renderIVRank();renderOrderFlow();renderMarketBreadth();renderReturnCalendar();renderDivergences();renderTrendGauge();renderPriceTargets();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();renderCorrPercentile();renderCointegration();renderLeadLag();}if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();renderPortCorr();renderRebalanceTargets();renderPortfolioQuickStats();}updateCorrSelectors();updateWatchlistChips();}
+function updateUI(){updateRegimeBar();updateTicker();updatePriceCards();if(S.activeTab==='market'){buildMainChart();updateStatsRow();renderSignals();renderTASummary();renderLinRegPanel();renderSectorHeatmap();renderNewsLinks();renderOpexBar();renderSRPanel();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderSqueezePanel();renderRSRanking();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();renderTradeIdeas();renderTrailingStops();renderSymCompare();renderVolumeSpikes();renderMeanRevScores();renderRegimeDetail();renderCandlePatterns();renderIVRank();renderOrderFlow();renderMarketBreadth();renderReturnCalendar();renderDivergences();renderTrendGauge();renderPriceTargets();const hl=document.getElementById('headlines-sym');if(hl) hl.textContent=CFG.symbols[0]||'';}if(S.activeTab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();renderCorrPercentile();renderCointegration();renderLeadLag();}if(S.activeTab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();renderPortCorr();renderRebalanceTargets();renderPortfolioQuickStats();renderVolSurface();renderPositionHeatmap();}updateCorrSelectors();updateWatchlistChips();}
 function startPolling(){stopPolling();if(CFG.pollInterval<=0||CFG.source==='demo') return;S.pollTimer=setInterval(()=>fetchAllSymbols(),CFG.pollInterval*1000);}
 function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
 function startDemoTick(){stopDemoTick();S.demoTicker=setInterval(tickDemoData,10000);}
@@ -2087,7 +2095,7 @@ function switchTab(tab){
   if(panel) panel.classList.add('active');if(btn) btn.classList.add('active');
   if(tab==='correlate'){updateCorrStats();renderSpreadPanel();renderSeasonality();renderCorrNetwork();renderCorrPercentile();renderCointegration();renderLeadLag();if(CFG.source!=='demo'&&Object.keys(yieldCache).length===0) setTimeout(fetchYieldCurve,200);}
   if(tab==='market'){buildMainChart();updateStatsRow();renderSignals();renderSectorHeatmap();renderNewsLinks();updatePerfTable();renderMomentumPanel();buildVolumeProfile();renderFearGreed();renderGapAnalysis();renderDrawdownPanel();renderDOWHeatmap();renderMTFOverview();renderPivotPoints();renderEconCalendar();renderTradeIdeas();renderTrailingStops();renderSymCompare();renderVolumeSpikes();renderMeanRevScores();renderRegimeDetail();renderCandlePatterns();renderIVRank();renderOrderFlow();renderMarketBreadth();renderReturnCalendar();renderDivergences();renderTrendGauge();renderPriceTargets();}
-  if(tab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();renderPortCorr();renderRebalanceTargets();renderPortfolioQuickStats();}
+  if(tab==='portfolio'){renderPortfolio();renderWatchlistNotes();renderTradeJournal();populateMCSym();populateBSSym();renderSharpeMetrics();buildPnLWaterfall();renderPortCorr();renderRebalanceTargets();renderPortfolioQuickStats();renderVolSurface();renderPositionHeatmap();}
 }
 function switchIngest(type){
   document.querySelectorAll('.ingest-panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.ingest-nav-btn').forEach(b=>b.classList.remove('active'));
@@ -4905,6 +4913,66 @@ function calcDCA(){
     {label:'Portfolio Value',data:balances,borderColor:'var(--accent)',borderWidth:2,fill:true,backgroundColor:'rgba(56,189,248,0.08)',pointRadius:0,tension:0.3},
     {label:'Amount Invested',data:contribs,borderColor:'rgba(148,163,184,0.5)',borderWidth:1.5,borderDash:[4,4],fill:false,pointRadius:0,tension:0},
   ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${fmt(ctx.raw)}`}}},scales:{x:{ticks:{font:{size:9}},grid:{color:'rgba(148,163,184,0.07)'}},y:{ticks:{font:{size:9},callback:v=>fmt(v)},grid:{color:'rgba(148,163,184,0.07)'}}}}});
+}
+
+// === VOLATILITY TERM STRUCTURE ===
+function renderVolSurface(){
+  const el=document.getElementById('vol-surface-grid');if(!el) return;
+  const syms=CFG.symbols;if(!syms.length) return;
+  const windows=[5,10,20,30,60,90];
+  el.innerHTML=`<table style="border-collapse:collapse;font-size:11px;width:100%">
+    <thead><tr><th style="text-align:left;padding:5px 8px;color:var(--text3);border-bottom:1px solid var(--border)">Symbol</th>
+    ${windows.map(w=>`<th style="text-align:right;padding:5px 8px;color:var(--text3);border-bottom:1px solid var(--border)">HV${w}</th>`).join('')}
+    <th style="text-align:right;padding:5px 8px;color:var(--text3);border-bottom:1px solid var(--border)">Shape</th>
+    </tr></thead>
+    <tbody>${syms.map(sym=>{
+      const bars=getFilteredBars(sym,'1d');if(bars.length<10) return`<tr><td colspan="${windows.length+2}" style="padding:5px 8px;color:var(--text3)">${sym}: insufficient data</td></tr>`;
+      const closes=bars.map(b=>b.close);
+      const hvs=windows.map(w=>calcHV(closes,w));
+      const valid=hvs.filter(v=>v!=null);
+      const first=valid[0]||0;const last=valid[valid.length-1]||0;
+      const shape=first>last*1.05?'Backwardation':last>first*1.05?'Contango':'Flat';
+      const shapeCol=shape==='Backwardation'?'var(--warn)':shape==='Contango'?'var(--pos)':'var(--text2)';
+      return`<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:5px 8px;font-weight:700;color:var(--text)">${sym}</td>
+        ${hvs.map((v,i)=>{
+          const prev=i>0?hvs.slice(0,i).filter(Boolean).pop():null;
+          const col=v==null?'var(--text3)':prev&&Math.abs(v-prev)>2?v>prev?'var(--neg)':'var(--pos)':'var(--text)';
+          return`<td style="text-align:right;padding:5px 8px;color:${col}">${v!=null?v.toFixed(1)+'%':'—'}</td>`;
+        }).join('')}
+        <td style="text-align:right;padding:5px 8px;color:${shapeCol};font-weight:600">${shape}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
+// === PORTFOLIO POSITION HEATMAP ===
+function renderPositionHeatmap(){
+  const el=document.getElementById('position-heatmap-grid');if(!el) return;
+  const port=CFG.portfolio;if(!port.length){el.innerHTML='<span style="font-size:11px;color:var(--text3)">No holdings</span>';return;}
+  let totalVal=0;
+  const items=port.map(h=>{
+    const bars=getFilteredBars(h.sym,'1d');if(!bars.length) return null;
+    const cur=bars[bars.length-1].close;const prev=bars.length>1?bars[bars.length-2].close:cur;
+    const val=cur*h.shares;const dayRet=(cur-prev)/prev*100;const totalRet=(cur-h.cost)/h.cost*100;
+    totalVal+=val;
+    return{sym:h.sym,val,dayRet,totalRet,cur};
+  }).filter(Boolean);
+  if(!totalVal) return;
+  // Color by day return, size by value
+  el.innerHTML=items.map(it=>{
+    const alloc=it.val/totalVal*100;
+    const minPx=60;const maxPx=200;const px=Math.max(minPx,Math.min(maxPx,alloc*8));
+    const retAbs=Math.min(5,Math.abs(it.dayRet));const intensity=retAbs/5;
+    const bg=it.dayRet>=0?`rgba(74,222,128,${0.08+intensity*0.5})`:`rgba(248,113,113,${0.08+intensity*0.5})`;
+    const textCol=it.dayRet>=0?'var(--pos)':'var(--neg)';
+    return`<div style="background:${bg};border:1px solid rgba(0,0,0,0.2);border-radius:6px;padding:10px;width:${px}px;display:inline-block;vertical-align:top;margin:2px">
+      <div style="font-size:13px;font-weight:700;color:var(--text)">${it.sym}</div>
+      <div style="font-size:11px;color:${textCol}">${it.dayRet>=0?'+':''}${it.dayRet.toFixed(2)}% today</div>
+      <div style="font-size:10px;color:var(--text3)">${alloc.toFixed(1)}% of port</div>
+      <div style="font-size:10px;color:${it.totalRet>=0?'var(--pos)':'var(--neg)'}">${it.totalRet>=0?'+':''}${it.totalRet.toFixed(1)}% total</div>
+    </div>`;
+  }).join('');
 }
 
 // === PORTFOLIO EXPORT ===
