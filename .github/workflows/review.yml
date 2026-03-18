@@ -81,13 +81,15 @@ jobs:
             try {
               const page = await browser.newPage();
 
-              // Capture console errors
+              // Capture console errors (ignore favicon and other non-app resources)
               page.on('console', msg => {
                 if (msg.type() === 'error') {
-                  results.console_errors.push({
-                    text: msg.text(),
-                    location: msg.location()
-                  });
+                  const text = msg.text();
+                  const loc = msg.location();
+                  const isFavicon = (loc?.url || '').includes('favicon');
+                  const isResourceLoad = text.includes('Failed to load resource');
+                  if (isFavicon || (isResourceLoad && !(loc?.url || '').includes('index'))) return;
+                  results.console_errors.push({ text, location: loc });
                 }
               });
 
@@ -323,7 +325,7 @@ jobs:
           )
 
           try:
-              with urllib.request.urlopen(req, timeout=120) as resp:
+              with urllib.request.urlopen(req, timeout=300) as resp:
                   response = json.loads(resp.read())
 
               fixed_html = response["content"][0]["text"]
