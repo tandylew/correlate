@@ -14,7 +14,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
   issues: write
   actions: read
@@ -202,7 +202,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_run" ]; then
             COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
           else
-            COMMIT_SHA=$(git -C /tmp ls-remote https://github.com/${{ github.repository }}.git HEAD 2>/dev/null | cut -f1 || echo "${{ github.sha }}")
+            COMMIT_SHA="${{ github.sha }}"
           fi
 
           # Post commit comment via GitHub API
@@ -215,6 +215,7 @@ jobs:
           # Create issue if failed
           if [ "$REVIEW_STATUS" = "fail" ]; then
             gh issue create \
+              --repo "${{ github.repository }}" \
               --title "Dashboard review failed - deployment ${{ github.run_id }}" \
               --body "## Review Failed
 
